@@ -29,6 +29,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -36,10 +39,10 @@ jobs:
           java-version: "21"
 
       - name: Install project dependencies
-        run: npm install --legacy-peer-deps --no-audit --no-fund
+        run: bun install --frozen-lockfile
 
       - name: Install Capacitor tooling
-        run: npm install --no-save --legacy-peer-deps --no-audit --no-fund @capacitor/cli@7 @capacitor/core@7 @capacitor/android@7
+        run: bun add @capacitor/cli@7 @capacitor/core@7 @capacitor/android@7
 
       - name: Prepare web directory
         run: mkdir -p public
