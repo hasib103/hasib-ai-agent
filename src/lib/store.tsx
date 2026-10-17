@@ -13,32 +13,13 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 const ago = (m: number) => new Date(Date.now() - m * 60000).toISOString();
 
 const seed = {
-  tasks: [
-    { id: "t1", title: "Audit repository structure for agent runtime", status: "running", updated: ago(12), demo: true, history: [{ at: ago(90), note: "Task created" }, { at: ago(60), note: "Listed top-level folders" }, { at: ago(12), note: "Drafting module map" }] },
-    { id: "t2", title: "Draft deployment checklist for Vercel", status: "paused", updated: ago(180), demo: true, history: [{ at: ago(300), note: "Task created" }, { at: ago(180), note: "Paused: waiting on Vercel access" }] },
-    { id: "t3", title: "Summarize Supabase schema options", status: "done", updated: ago(1440), demo: true, history: [{ at: ago(1600), note: "Task created" }, { at: ago(1440), note: "Completed summary" }] },
-    { id: "t4", title: "Prepare Runway video prompt set", status: "blocked", updated: ago(400), demo: true, history: [{ at: ago(500), note: "Task created" }, { at: ago(400), note: "Blocked: Runway not connected" }] },
-    { id: "t5", title: "Review Render service config", status: "queued", updated: ago(30), demo: true, history: [{ at: ago(30), note: "Task created" }] },
-  ] as Task[],
-  notes: [
-    { id: "n1", title: "Project goal", body: "Independent starter dashboard to organize the agent project while repository access is resolved.", tags: ["project"], updated: ago(2000), demo: true },
-    { id: "n2", title: "Security rules", body: "Secrets stay server-side. Never paste keys into chat. Sensitive actions need explicit approval.", tags: ["security"], updated: ago(900), demo: true },
-    { id: "n3", title: "Preferred stack", body: "TypeScript, React, server functions. Deploy targets under evaluation: Vercel, Render.", tags: ["tech"], updated: ago(300), demo: true },
-  ] as Note[],
-  approvals: [
-    { id: "a1", action: "Publish preview build", category: "publish", detail: "Deploy current branch to production domain.", requested: ago(20), status: "pending", demo: true },
-    { id: "a2", action: "Delete stale memory notes", category: "delete", detail: "Remove 4 notes older than 90 days.", requested: ago(75), status: "pending", demo: true },
-    { id: "a3", action: "Purchase 1,000 Runway credits", category: "spend", detail: "Estimated cost: $12.00", requested: ago(200), status: "pending", demo: true },
-    { id: "a4", action: "Send status email via Inkbox", category: "message", detail: "To: team@example.com", requested: ago(400), status: "rejected", demo: true },
-  ] as Approval[],
-  log: [
-    { id: "l1", at: ago(12), actor: "agent", event: "Task t1 progress: drafting module map", demo: true },
-    { id: "l2", at: ago(20), actor: "agent", event: "Requested approval: Publish preview build", demo: true },
-    { id: "l3", at: ago(180), actor: "agent", event: "Paused task t2 (missing Vercel access)", demo: true },
-    { id: "l4", at: ago(400), actor: "Hasib", event: "Rejected: Send status email via Inkbox", demo: true },
-  ] as LogEntry[],
+  // Start with genuinely empty user data; never present fabricated tasks or approvals as real.
+  tasks: [] as Task[],
+  notes: [] as Note[],
+  approvals: [] as Approval[],
+  log: [] as LogEntry[],
   prefs: { approvals: true, taskDone: true, taskFailed: true, dailyDigest: false, quietHours: true } as Prefs,
-  settings: { agentName: "Hasib AI Agent", requireConfirm: true, autoResume: false, timezone: "UTC" } as Settings,
+  settings: { agentName: "Hasib AI Agent", requireConfirm: true, autoResume: false, timezone: "Asia/Dhaka" } as Settings,
 };
 type State = typeof seed;
 const KEY = "hasib-agent-v1";
