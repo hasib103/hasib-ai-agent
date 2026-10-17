@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - "capacitor.config.ts"
+      - "src/**"
+      - "public/**"
+      - "vite.config.ts"
       - ".github/workflows/android-apk.yml"
       - "package.json"
       - "bun.lock"
