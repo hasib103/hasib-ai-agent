@@ -25,12 +25,8 @@ function Dashboard() {
   ] as const;
   return (
     <>
-      <PageHeader title={`Good to see you, Hasib`} sub="Independent starter dashboard while repository access is resolved." />
-      <div className="card-surface p-4 mb-5 border-warning/40 text-sm">
-        <span className="demo-tag mr-2">DEMO</span>
-        Seeded demo data is shown. No external services are connected; data is stored only in this browser.
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <PageHeader title={`Good to see you, Hasib`} sub="Your private workspace for tasks, notes and approvals. New records are yours; no sample data is inserted." />
+<div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {stats.map((x) => (
           <Link key={x.label} to={x.to} className="card-surface p-4 hover:border-primary/60 transition-colors">
             <div className="text-2xl font-display font-semibold text-primary">{x.value}</div>
