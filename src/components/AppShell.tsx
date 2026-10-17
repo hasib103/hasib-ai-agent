@@ -1,0 +1,57 @@
+import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import { useStore } from "@/lib/store";
+
+const nav = [
+  { to: "/", label: "Home", icon: "◉" },
+  { to: "/tasks", label: "Tasks", icon: "☰" },
+  { to: "/approvals", label: "Approvals", icon: "✓" },
+  { to: "/memory", label: "Memory", icon: "✎" },
+  { to: "/integrations", label: "Integrations", icon: "⇄" },
+  { to: "/activity", label: "Activity", icon: "≡" },
+  { to: "/notifications", label: "Alerts", icon: "◔" },
+  { to: "/settings", label: "Settings", icon: "⚙" },
+] as const;
+const mobile = ["/", "/tasks", "/approvals", "/memory", "/settings"];
+
+export function AppShell({ children }: { children: ReactNode }) {
+  const { s } = useStore();
+  const pending = s.approvals.filter((a) => a.status === "pending").length;
+  const linkCls = "flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-secondary";
+  const active = { className: "bg-accent text-accent-foreground" };
+  return (
+    <div className="min-h-screen md:flex">
+      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r p-4 gap-1 sticky top-0 h-screen">
+        <div className="px-3 pb-5 pt-1">
+          <div className="font-display text-lg font-semibold">Hasib<span className="text-primary"> AI Agent</span></div>
+          <div className="text-xs text-muted-foreground font-mono">control panel · MVP</div>
+        </div>
+        {nav.map((n) => (
+          <Link key={n.to} to={n.to} className={linkCls} activeProps={active} activeOptions={{ exact: n.to === "/" }}>
+            <span className="w-4 text-center">{n.icon}</span>{n.label}
+            {n.to === "/approvals" && pending > 0 && <span className="ml-auto rounded-full bg-warning text-warning-foreground text-xs px-2">{pending}</span>}
+          </Link>
+        ))}
+      </aside>
+      <div className="flex-1 min-w-0">
+        <div className="md:hidden flex items-center justify-between border-b px-4 py-3 sticky top-0 bg-background/90 backdrop-blur z-30">
+          <span className="font-display font-semibold">Hasib<span className="text-primary"> AI</span></span>
+          <div className="flex gap-3 text-sm text-muted-foreground">
+            <Link to="/integrations" activeProps={{ className: "text-primary" }}>Integrations</Link>
+            <Link to="/activity" activeProps={{ className: "text-primary" }}>Log</Link>
+            <Link to="/notifications" activeProps={{ className: "text-primary" }}>Alerts</Link>
+          </div>
+        </div>
+        <main className="mx-auto max-w-4xl px-4 py-6 pb-28 md:pb-10">{children}</main>
+      </div>
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t bg-card grid grid-cols-5">
+        {nav.filter((n) => mobile.includes(n.to)).map((n) => (
+          <Link key={n.to} to={n.to} className="relative flex flex-col items-center py-2.5 text-xs text-muted-foreground" activeProps={{ className: "text-primary" }} activeOptions={{ exact: n.to === "/" }}>
+            <span className="text-lg leading-none">{n.icon}</span>{n.label}
+            {n.to === "/approvals" && pending > 0 && <span className="absolute top-1 right-1/4 rounded-full bg-warning text-warning-foreground text-[10px] px-1.5">{pending}</span>}
+          </Link>
+        ))}
+      </nav>
+    </div>
+  );
+}
