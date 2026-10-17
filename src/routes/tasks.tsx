@@ -110,6 +110,30 @@ const tone: Record<TaskStatus, string> = {
 };
 const filters = ["all", "running", "queued", "paused", "blocked", "done", "failed"] as const;
 
+const starterPrompts = [
+  {
+    title: "Check app health and report",
+    prompt: "Inspect the Hasib AI Agent app and report only verified facts: what works now, what is broken, what is still a mock/local-only feature, and the exact next steps. Do not claim a task ran unless execution evidence confirms it. Do not expose secrets.",
+  },
+  {
+    title: "Verify AI planner",
+    prompt: "Test the AI plan generator using a harmless request. Confirm whether the backend and AI provider respond successfully. If it fails, record the exact non-secret error and the likely configuration area; never print API keys or secret values.",
+  },
+  {
+    title: "Set up secure persistent storage",
+    prompt: "Plan and implement persistent task and memory storage with authenticated access. Verify the database configuration before use, keep service-role credentials server-side only, enable row-level security, and document any setup steps that require Hasib's approval. Do not invent credentials.",
+  },
+  {
+    title: "Connect task execution safely",
+    prompt: "Design a server-side task runner that executes only explicitly supported actions. Require Hasib's confirmation before sending messages, publishing, deleting data, spending money, changing security settings, or using external accounts. Log outcomes and failures accurately; do not mark queued tasks as completed.",
+  },
+  {
+    title: "Build and verify Android APK",
+    prompt: "Build the latest Hasib AI Agent Android debug APK from the current main branch. Verify the GitHub Actions run succeeded and the APK artifact exists and has not expired. Report the exact artifact link and installation/testing limitations; do not claim device testing unless it actually occurred.",
+  },
+] as const;
+
+
 function Tasks() {
   const { s, set, uid, now, confirm } = useStore();
   const [f, setF] = useState<(typeof filters)[number]>("all");
@@ -124,6 +148,45 @@ function Tasks() {
     <>
       <PageHeader title="Task inbox" sub="Tasks are tracked locally. The agent runtime is not connected yet." />
       <AiPlanner />
+      <section className="card-surface p-4 mb-4 space-y-3">
+        <div>
+          <h2 className="font-semibold">Starter task prompts</h2>
+          <p className="text-xs text-muted-foreground mt-1">These prompts are saved as queued inbox tasks in this browser only. They do not run automatically; the agent runtime is not connected yet.</p>
+        </div>
+        <ul className="space-y-2">
+          {starterPrompts.map((item) => (
+            <li key={item.title} className="rounded-md border p-3">
+              <p className="text-sm font-medium">{item.title}</p>
+              <p className="text-xs text-muted-foreground mt-1">{item.prompt}</p>
+            </li>
+          ))}
+        </ul>
+        <button
+          className="btn btn-primary"
+          disabled={starterPrompts.every((item) => s.tasks.some((task) => task.title === item.title))}
+          onClick={() => {
+            const fresh = starterPrompts.filter((item) => !s.tasks.some((task) => task.title === item.title));
+            if (!fresh.length) return;
+            set((st) => ({
+              ...st,
+              tasks: [
+                ...fresh.map((item) => ({
+                  id: uid(),
+                  title: item.title,
+                  status: "queued" as TaskStatus,
+                  updated: now(),
+                  history: [{ at: now(), note: `Saved prompt: ${item.prompt}` }],
+                })),
+                ...st.tasks,
+              ],
+            }), `Saved ${fresh.length} starter task prompts to inbox`);
+          }}
+        >
+          {starterPrompts.every((item) => s.tasks.some((task) => task.title === item.title))
+            ? "Starter prompts already saved"
+            : "Save starter prompts to inbox"}
+        </button>
+      </section>
       <form className="flex gap-2 mb-4" onSubmit={(e) => { e.preventDefault(); if (!title.trim()) return;
         set((st) => ({ ...st, tasks: [{ id: uid(), title: title.trim(), status: "queued", updated: now(), history: [{ at: now(), note: "Task created" }] }, ...st.tasks] }), `Created task "${title.trim()}"`); setTitle(""); }}>
         <input className="field" placeholder="New task…" value={title} onChange={(e) => setTitle(e.target.value)} />
