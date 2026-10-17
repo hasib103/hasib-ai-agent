@@ -22,19 +22,23 @@ function Settings() {
         <label className="block text-sm">Timezone<input className="field mt-1" value={s.settings.timezone} onChange={(e) => set((st) => ({ ...st, settings: { ...st.settings, timezone: e.target.value } }))} /></label>
       </div>
       <h2 className="font-semibold mb-2">Security</h2>
+      <div className="card-surface p-4 mb-4 border border-warning/30 space-y-1">
+        <p className="text-sm font-medium">Protection not configured yet</p>
+        <p className="text-xs text-muted-foreground">This app currently has no account login or enrolled-device lock. Anyone who can open the public app URL may reach the dashboard. Do not store sensitive information here until authentication and server-side authorization are implemented.</p>
+      </div>
       <div className="card-surface divide-y mb-4">
-        <Toggle label="Require confirmation for sensitive actions" sub="Publishing, deleting, spending, security changes, external messages" on={s.settings.requireConfirm}
+        <Toggle label="Require confirmation for sensitive actions" sub="UI safety preference only; a real task execution runtime is not connected yet." on={s.settings.requireConfirm}
           onChange={async (v) => {
             if (!v) { await confirm("Cannot disable", "Confirmation for sensitive actions is a fixed safety default in this version.", false); return; }
           }} />
-        <Toggle label="Auto-resume paused tasks" sub="Resume from the last step after restarts" on={s.settings.autoResume}
+        <Toggle label="Auto-resume paused tasks" sub="Preference only; tasks do not automatically run or resume in this version." on={s.settings.autoResume}
           onChange={async (v) => { if (await confirm("Change security setting?", `Turn auto-resume ${v ? "on" : "off"}.`)) set((st) => ({ ...st, settings: { ...st.settings, autoResume: v } }), `Auto-resume ${v ? "enabled" : "disabled"}`); }} />
         <div className="p-4 text-sm"><div className="font-medium">API keys & secrets</div><p className="text-xs text-muted-foreground mt-1">Never stored in this app's browser code or requested in chat. They will live in server-side secret storage when integrations are set up.</p></div>
       </div>
       <h2 className="font-semibold mb-2">Data</h2>
       <div className="card-surface p-4 flex items-center gap-3">
-        <span className="flex-1 text-sm text-muted-foreground">Reset all local data to the DEMO seed.</span>
-        <button className="btn btn-danger" onClick={async () => { if (await confirm("Reset all data?", "All your tasks, notes, and log entries in this browser will be erased.", true)) reset(); }}>Reset</button>
+        <span className="flex-1 text-sm text-muted-foreground">Erase tasks, notes, and logs stored in this browser. This does not erase any server-side data.</span>
+        <button className="btn btn-danger" onClick={async () => { if (await confirm("Reset all data?", "All tasks, notes, and log entries saved in this browser will be erased. This cannot be undone.", true)) reset(); }}>Reset</button>
       </div>
       <p className="text-xs text-muted-foreground mt-6">Hasib AI Agent is an independent starter dashboard. It does not contain OpenHands source code.</p>
     </>
