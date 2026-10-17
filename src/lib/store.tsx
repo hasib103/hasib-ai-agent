@@ -41,7 +41,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Pending>(null);
 
   useEffect(() => {
-    try { const raw = localStorage.getItem(KEY); if (raw) setS({ ...seed, ...JSON.parse(raw) }); } catch {}
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<State>;
+        // Drop legacy demo rows left by earlier previews; keep only user-created records.
+        setS({
+          ...seed,
+          ...saved,
+          tasks: Array.isArray(saved.tasks) ? saved.tasks.filter((item) => !item.demo) : [],
+          notes: Array.isArray(saved.notes) ? saved.notes.filter((item) => !item.demo) : [],
+          approvals: Array.isArray(saved.approvals) ? saved.approvals.filter((item) => !item.demo) : [],
+          log: Array.isArray(saved.log) ? saved.log.filter((item) => !item.demo) : [],
+        });
+      }
+    } catch {
+      // Corrupt local data should not block the app from opening.
+    }
     loaded.current = true;
   }, []);
   useEffect(() => { if (loaded.current) localStorage.setItem(KEY, JSON.stringify(s)); }, [s]);
