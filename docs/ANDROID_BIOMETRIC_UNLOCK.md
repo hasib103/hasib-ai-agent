@@ -14,10 +14,10 @@ Use Android's system biometric prompt on the owner's enrolled device (including 
 
 ## Current repository constraints (verified from source snapshot)
 - `capacitor.config.ts` points the native shell at the hosted Render URL.
-- `package.json` does not currently declare Capacitor core/CLI or a biometric plugin.
-- `android/` native project files were not found at the expected paths during inspection.
+- `package.json` now declares Capacitor 8, the Android platform package, app lifecycle support, and `@aparajita/capacitor-biometric-auth` 10.0.0 on the draft branch.
+- `android/` native project files were not found at the expected paths during inspection; the APK workflow must generate/sync the native project or commit it.
 - The Settings screen currently states that protection is not configured and the app has no account login or enrolled-device lock.
 - The existing authorized-device SQL migration is only a schema foundation; it is not applied to a live Supabase project and does not enforce authorization by itself.
 
 ## Status
-**Not implemented or enabled.** This document is an implementation specification only. A biometric prompt must not be advertised as active until the native plugin and Android project are wired into the APK build, the app's protected entry points are gated, device-bound key verification is enforced server-side, and an APK is installed and tested on the owner's phone.
+**Partially implemented in the draft branch; not yet verified.** A native-only app gate now requests strong Android biometric authentication at app start and after returning from the background, and Settings has a manual lock action. It fails closed when strong biometrics are unavailable. This is only local app-shell protection: it does not secure the public Render website, prove the device's identity to the server, or replace account authentication. Do not call it production-ready until the native Android project/build workflow is wired, dependency installation and CI builds pass, device-bound key verification is enforced server-side, and the APK is installed and tested on the owner's phone.
