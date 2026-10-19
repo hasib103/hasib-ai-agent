@@ -14,6 +14,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { StoreProvider } from "@/lib/store";
 import { AppShell } from "@/components/AppShell";
+import { BiometricGate } from "@/components/BiometricGate";
 
 function NotFoundComponent() {
   return (
@@ -123,9 +124,11 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <StoreProvider>
-        <AppShell>
-          <Outlet />
-        </AppShell>
+        <BiometricGate>
+          <AppShell>
+            <Outlet />
+          </AppShell>
+        </BiometricGate>
       </StoreProvider>
     </QueryClientProvider>
   );
