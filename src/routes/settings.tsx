@@ -22,6 +22,7 @@ function Settings() {
         <label className="block text-sm">Timezone<input className="field mt-1" value={s.settings.timezone} onChange={(e) => set((st) => ({ ...st, settings: { ...st.settings, timezone: e.target.value } }))} /></label>
       </div>
       <h2 className="font-semibold mb-2">Security</h2>
+      <div className="mb-3"><button className="btn btn-ghost" onClick={() => window.dispatchEvent(new Event("hasib:lock-app"))}>Lock app now (Android app)</button><p className="text-xs text-muted-foreground mt-1">The native app asks for fingerprint verification again after returning from the background.</p></div>
       <div className="card-surface p-4 mb-4 border border-warning/30 space-y-1">
         <p className="text-sm font-medium">Protection not configured yet</p>
         <p className="text-xs text-muted-foreground">This app currently has no account login or enrolled-device lock. Anyone who can open the public app URL may reach the dashboard. Do not store sensitive information here until authentication and server-side authorization are implemented.</p>
