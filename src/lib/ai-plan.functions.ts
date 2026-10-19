@@ -1,9 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getRequestHeader } from "@tanstack/react-start/server";
-import { createOpenAI } from "@ai-sdk/openai";
-import { Output, streamText } from "ai";
 import { z } from "zod";
-import { createLovableAiGatewayRunIdFetch } from "./ai-run-id";
 
 const planSchema = z.object({
   summary: z.string().describe("One-sentence summary of the plan"),
@@ -12,8 +8,8 @@ const planSchema = z.object({
       z.object({
         title: z.string().describe("Short actionable step title"),
         priority: z.enum(["high", "medium", "low"]),
-        risk: z.enum(["low", "medium", "high"]).describe("Risk of doing this step wrong or it having side effects"),
-        rationale: z.string().describe("Why this step, its priority and its risk label"),
+        risk: z.enum(["low", "medium", "high"]),
+        rationale: z.string().describe("Why this step, its priority and risk label"),
       }),
     )
     .min(1)
@@ -21,6 +17,27 @@ const planSchema = z.object({
 });
 
 export type AiPlan = z.infer<typeof planSchema>;
+
+const responseSchema = {
+  type: "OBJECT",
+  properties: {
+    summary: { type: "STRING" },
+    steps: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          priority: { type: "STRING", enum: ["high", "medium", "low"] },
+          risk: { type: "STRING", enum: ["low", "medium", "high"] },
+          rationale: { type: "STRING" },
+        },
+        required: ["title", "priority", "risk", "rationale"],
+      },
+    },
+  },
+  required: ["summary", "steps"],
+};
 
 export const generateTaskPlan = createServerFn({ method: "POST" })
   .inputValidator((input: { request: string }) => {
@@ -30,44 +47,84 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
     return { request };
   })
   .handler(async ({ data }) => {
-    const apiKey = process.env["LOVABLE_API_KEY"];
-    if (!apiKey) throw new Error("AI is not configured for this app yet.");
+    const apiKey = process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"];
+    if (!apiKey) {
+      throw new Error("AI is not configured. Add GEMINI_API_KEY to the server environment.");
+    }
 
-    const runIdFetch = createLovableAiGatewayRunIdFetch(
-      getRequestHeader("X-Lovable-AIG-Run-ID")?.trim() || undefined,
-    );
-    const openai = createOpenAI({
-      baseURL: "https://ai.gateway.lovable.dev/v1",
-      apiKey,
-      headers: { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "vercel-ai-sdk" },
-      fetch: runIdFetch.fetch,
-    });
-
-    const result = streamText({
-      model: openai.responses("openai/gpt-6-astra"),
-      system:
-        "You are a planning assistant inside a personal AI agent control panel. " +
-        "Turn the user's task request into a concrete action plan of 3-6 ordered steps. " +
-        "Each step gets a priority (high/medium/low) and a risk label: " +
-        "high risk = irreversible, destructive, spends money, or touches security/credentials; " +
-        "medium risk = changes shared state or contacts external services; " +
-        "low risk = local, reversible work. " +
-        "Never invent access the user has not granted; if a step needs an integration that is not connected, say so in the rationale.",
-      messages: [{ role: "user", content: data.request }],
-      output: Output.object({ schema: planSchema }),
-      maxRetries: 0,
-      providerOptions: {
-        openai: {
-          store: false,
-          forceReasoning: true,
-          reasoningEffort: "low",
-          reasoningSummary: "auto",
-          include: ["reasoning.encrypted_content"],
+    const model = process.env["GEMINI_MODEL"] || "gemini-3.8-flash";
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
         },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{
+              text:
+                "You are a planning assistant inside a personal AI agent control panel. " +
+                "Turn the user's task request into a concrete action plan of 3-6 ordered steps. " +
+                "Each step gets a priority (high/medium/low) and a risk label: " +
+                "high risk = irreversible, destructive, spends money, or touches security/credentials; " +
+                "medium risk = changes shared state or contacts external services; " +
+                "low risk = local, reversible work. " +
+                "Never invent access the user has not granted; if a step needs an integration that is not connected, say so in the rationale. " +
+                "Return only data matching the provided JSON schema."
+            }]
+          },
+          contents: [{ role: "user", parts: [{ text: data.request }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema,
+            temperature: 0.2,
+            maxOutputTokens: 1800,
+          },
+        }),
+        signal: AbortSignal.timeout(30_000),
       },
-    });
+    );
 
-    const plan = await result.output;
-    if (!plan) throw new Error("The model did not return a plan. Please try again.");
-    return plan;
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      console.error("Gemini API request failed", response.status, detail.slice(0, 1000));
+      if (response.status === 429) {
+        throw new Error("Gemini API quota/rate limit reached. Wait and try again later.");
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw new Error("Gemini API key was rejected or does not have permission. Check the server secret.");
+      }
+      throw new Error(`Gemini API request failed (HTTP ${response.status}). Check server logs.`);
+    }
+
+    const payload = (await response.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      promptFeedback?: { blockReason?: string };
+    };
+    const text = payload.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? "")
+      .join("")
+      .trim();
+
+    if (!text) {
+      const reason = payload.promptFeedback?.blockReason;
+      throw new Error(reason ? `Gemini blocked the request: ${reason}.` : "Gemini returned an empty response. Please try again.");
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error("Gemini returned invalid JSON. Please try again.");
+    }
+
+    const plan = planSchema.safeParse(parsed);
+    if (!plan.success) {
+      console.error("Gemini task plan did not match schema", plan.error.flatten());
+      throw new Error("Gemini returned a plan in an unexpected format. Please try again.");
+    }
+
+    return plan.data;
   });
