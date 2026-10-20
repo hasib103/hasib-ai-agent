@@ -21,7 +21,7 @@ function Dashboard() {
     { label: "Active tasks", value: active.length, to: "/tasks" },
     { label: "Pending approvals", value: pending.length, to: "/approvals" },
     { label: "Memory notes", value: s.notes.length, to: "/memory" },
-    { label: "Integrations connected", value: "0 / 6", to: "/integrations" },
+    { label: "Integrations connected", value: "1 / 6", to: "/integrations" },
   ] as const;
   return (
     <>
