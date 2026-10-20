@@ -37,7 +37,7 @@ function Settings() {
       </div>
       <h2 className="font-semibold mb-2">Data</h2>
       <div className="card-surface p-4 flex items-center gap-3">
-        <span className="flex-1 text-sm text-muted-foreground">Erase tasks, notes, and logs stored in this browser. This does not erase any server-side data.</span>
+        <span className="flex-1 text-sm text-muted-foreground">Erase tasks, notes, approvals, and activity logs stored in your Supabase account. This cannot be undone.</span>
         <button className="btn btn-danger" onClick={async () => { if (await confirm("Reset all data?", "All tasks, notes, and log entries saved in this browser will be erased. This cannot be undone.", true)) reset(); }}>Reset</button>
       </div>
       <p className="text-xs text-muted-foreground mt-6">Hasib AI Agent is an independent starter dashboard. It does not contain OpenHands source code.</p>
