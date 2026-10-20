@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { useStore, timeAgo, Demo, PageHeader, type TaskStatus } from "@/lib/store";
 import { generateTaskPlan, type AiPlan } from "@/lib/ai-plan.functions";
+import { supabase } from "@/lib/supabase";
 
 const riskTone: Record<string, string> = {
   low: "bg-success/15 text-success", medium: "bg-warning/15 text-warning", high: "bg-destructive/15 text-destructive",
@@ -23,7 +24,9 @@ function AiPlanner() {
   const generate = async () => {
     setBusy(true); setError(null); setPlan(null); setAdded(false);
     try {
-      const p = await run({ data: { request } });
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session?.access_token) throw new Error("Sign in again to use the AI planner.");
+      const p = await run({ data: { request, accessToken: sessionData.session.access_token } });
       setPlan(p);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Plan generation failed. Please try again.");
