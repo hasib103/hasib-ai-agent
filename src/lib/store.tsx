@@ -41,6 +41,7 @@ const Ctx = createContext<{
 export function StoreProvider({ children, userId }: { children: ReactNode; userId: string }) {
   const [s, setS] = useState<State>(seed);
   const loaded = useRef(false);
+  const previous = useRef<State>(seed);
   const [pending, setPending] = useState<Pending>(null);
 
   useEffect(() => {
@@ -73,20 +74,31 @@ export function StoreProvider({ children, userId }: { children: ReactNode; userI
         settings: settings.data ? { agentName: settings.data.agent_name, requireConfirm: settings.data.require_confirm, autoResume: settings.data.auto_resume, timezone: settings.data.timezone } : seed.settings,
         prefs: prefs.data ? { approvals: prefs.data.approvals, taskDone: prefs.data.task_done, taskFailed: prefs.data.task_failed, dailyDigest: prefs.data.daily_digest, quietHours: prefs.data.quiet_hours } : seed.prefs,
       };
+      previous.current = next;
       setS(next);
       loaded.current = true;
     }
     void loadFromSupabase().catch((error: unknown) => {
       console.error("Supabase workspace load failed:", error instanceof Error ? error.message : "Unknown error");
-      if (alive) { setS(seed); loaded.current = true; }
+      if (alive) { previous.current = seed; setS(seed); loaded.current = true; }
     });
     return () => { alive = false; };
   }, [userId]);
 
   useEffect(() => {
     if (!loaded.current) return;
+    const before = previous.current;
+    previous.current = s;
     const save = async () => {
+      const removedTasks = before.tasks.filter((old) => !s.tasks.some((item) => item.id === old.id)).map((item) => item.id);
+      const removedNotes = before.notes.filter((old) => !s.notes.some((item) => item.id === old.id)).map((item) => item.id);
+      const removedApprovals = before.approvals.filter((old) => !s.approvals.some((item) => item.id === old.id)).map((item) => item.id);
+      const removedLogs = before.log.filter((old) => !s.log.some((item) => item.id === old.id)).map((item) => item.id);
       const results = await Promise.all([
+        ...(removedTasks.length ? [supabase.from("tasks").delete().eq("user_id", userId).in("id", removedTasks)] : []),
+        ...(removedNotes.length ? [supabase.from("memory_notes").delete().eq("user_id", userId).in("id", removedNotes)] : []),
+        ...(removedApprovals.length ? [supabase.from("approvals").delete().eq("user_id", userId).in("id", removedApprovals)] : []),
+        ...(removedLogs.length ? [supabase.from("activity_log").delete().eq("user_id", userId).in("id", removedLogs)] : []),
         ...s.tasks.map((task) => supabase.from("tasks").upsert({ id: task.id, user_id: userId, title: task.title, status: task.status, updated_at: task.updated, created_at: task.updated }, { onConflict: "id" })),
         ...s.tasks.flatMap((task) => task.history.map((entry, index) => supabase.from("task_history").upsert({ id: stableHistoryId(task.id, index), task_id: task.id, user_id: userId, at: entry.at, note: entry.note }, { onConflict: "id" }))),
         ...s.notes.map((note) => supabase.from("memory_notes").upsert({ id: note.id, user_id: userId, title: note.title, body: note.body, tags: note.tags, updated_at: note.updated }, { onConflict: "id" })),
