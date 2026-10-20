@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { supabase } from "@/lib/supabase";
 
 const planSchema = z.object({
   summary: z.string().describe("One-sentence summary of the plan"),
@@ -40,13 +41,18 @@ const responseSchema = {
 };
 
 export const generateTaskPlan = createServerFn({ method: "POST" })
-  .inputValidator((input: { request: string }) => {
+  .inputValidator((input: { request: string; accessToken: string }) => {
     const request = (input?.request ?? "").trim();
+    const accessToken = (input?.accessToken ?? "").trim();
     if (!request) throw new Error("Describe the task first.");
     if (request.length > 2000) throw new Error("Keep the request under 2000 characters.");
-    return { request };
+    if (!accessToken || accessToken.length > 8192) throw new Error("Sign in to use the AI planner.");
+    return { request, accessToken };
   })
   .handler(async ({ data }) => {
+    const { data: authData, error: authError } = await supabase.auth.getUser(data.accessToken);
+    if (authError || !authData.user) throw new Error("Your session is invalid or expired. Sign in again.");
+
     const apiKey = process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"];
     if (!apiKey) {
       throw new Error("AI is not configured. Add GEMINI_API_KEY to the server environment.");

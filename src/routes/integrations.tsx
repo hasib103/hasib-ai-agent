@@ -13,7 +13,7 @@ export const Route = createFileRoute("/integrations")({
 
 const items = [
   { name: "GitHub", desc: "Repositories, issues, pull requests", setup: "OAuth app" },
-  { name: "Supabase", desc: "Database, auth and storage", setup: "OAuth / server-side key" },
+  { name: "Supabase", desc: "Authenticated database, auth and row-level security", setup: "Connected to project database", connected: true },
   { name: "Vercel", desc: "Deployments and previews", setup: "OAuth integration" },
   { name: "Render", desc: "Services and background workers", setup: "Server-side API key" },
   { name: "Inkbox", desc: "Email and external messaging", setup: "Server-side API key" },
@@ -23,7 +23,7 @@ const items = [
 function Integrations() {
   return (
     <>
-      <PageHeader title="Integrations" sub="No services are connected. Connections will be added once real OAuth or server-side API setup exists." />
+      <PageHeader title="Integrations" sub="Supabase database access is connected. Other provider integrations remain unavailable until their own OAuth or server-side credentials are configured." />
       <div className="card-surface p-4 mb-4 text-sm text-muted-foreground">
         Keys are never entered here or in chat. They will be stored as server-side secrets only.
       </div>
@@ -32,11 +32,11 @@ function Integrations() {
           <div key={i.name} className="card-surface p-4">
             <div className="flex items-center gap-2">
               <span className="font-medium flex-1">{i.name}</span>
-              <span className="text-xs rounded-full px-2 py-0.5 bg-secondary text-muted-foreground">● Not connected</span>
+              <span className="text-xs rounded-full px-2 py-0.5 bg-secondary text-muted-foreground">● {"connected" in i && i.connected ? "Connected" : "Not connected"}</span>
             </div>
             <p className="text-sm text-muted-foreground mt-1">{i.desc}</p>
             <p className="text-xs font-mono text-muted-foreground mt-2">Planned setup: {i.setup}</p>
-            <button className="btn btn-ghost w-full mt-3" disabled title="Not available until real setup exists">Connect — not available yet</button>
+            <button className="btn btn-ghost w-full mt-3" disabled title={"connected" in i && i.connected ? "Supabase database is configured" : "Not available until real setup exists"}>{ "connected" in i && i.connected ? "Database connected" : "Connect — not available yet" }</button>
           </div>
         ))}
       </div>

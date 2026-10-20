@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useStore } from "@/lib/store";
+import { supabase } from "@/lib/supabase";
 
 const nav = [
   { to: "/", label: "Home", icon: "◉" },
@@ -32,6 +33,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             {n.to === "/approvals" && pending > 0 && <span className="ml-auto rounded-full bg-warning text-warning-foreground text-xs px-2">{pending}</span>}
           </Link>
         ))}
+        <button className={linkCls + " mt-auto"} onClick={() => { void supabase.auth.signOut(); }}>
+          <span className="w-4 text-center">↪</span>Sign out
+        </button>
       </aside>
       <div className="flex-1 min-w-0">
         <div className="md:hidden flex items-center justify-between border-b px-4 py-3 sticky top-0 bg-background/90 backdrop-blur z-30">
@@ -40,6 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link to="/integrations" activeProps={{ className: "text-primary" }}>Integrations</Link>
             <Link to="/activity" activeProps={{ className: "text-primary" }}>Log</Link>
             <Link to="/notifications" activeProps={{ className: "text-primary" }}>Alerts</Link>
+            <button onClick={() => { void supabase.auth.signOut(); }} className="text-muted-foreground">Sign out</button>
           </div>
         </div>
         <main className="mx-auto max-w-4xl px-4 py-6 pb-28 md:pb-10">{children}</main>
