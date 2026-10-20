@@ -124,11 +124,13 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <AuthGate>
-        <StoreProvider>
-          <AppShell>
-            <Outlet />
-          </AppShell>
-        </StoreProvider>
+        {(userId) => (
+          <StoreProvider key={userId} userId={userId}>
+            <AppShell>
+              <Outlet />
+            </AppShell>
+          </StoreProvider>
+        )}
       </AuthGate>
     </QueryClientProvider>
   );
