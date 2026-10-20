@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { supabase } from "@/lib/supabase";
 
 export type TaskStatus = "queued" | "running" | "paused" | "blocked" | "done" | "failed";
 export type Task = { id: string; title: string; status: TaskStatus; updated: string; history: { at: string; note: string }[]; demo?: boolean };
@@ -10,7 +11,6 @@ export type Settings = { agentName: string; requireConfirm: boolean; autoResume:
 
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
-const ago = (m: number) => new Date(Date.now() - m * 60000).toISOString();
 
 const seed = {
   // Start with genuinely empty user data; never present fabricated tasks or approvals as real.
