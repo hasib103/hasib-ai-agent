@@ -29,7 +29,7 @@ function Memory() {
 
   return (
     <>
-      <PageHeader title="Memory" sub="Notes the agent can refer to. Saved in this browser. Never store secrets here." />
+      <PageHeader title="Memory" sub="Notes the agent can refer to. Saved in your Supabase account. Never store secrets here." />
       <div className="flex gap-2 mb-4">
         <input className="field" placeholder="Search notes and tags…" value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="btn btn-primary" onClick={() => setEdit({ id: uid(), title: "", body: "", tags: [], updated: now() })}>New</button>
