@@ -23,8 +23,8 @@ function Settings() {
       </div>
       <h2 className="font-semibold mb-2">Security</h2>
       <div className="card-surface p-4 mb-4 border border-warning/30 space-y-1">
-        <p className="text-sm font-medium">Protection not configured yet</p>
-        <p className="text-xs text-muted-foreground">This app currently has no account login or enrolled-device lock. Anyone who can open the public app URL may reach the dashboard. Do not store sensitive information here until authentication and server-side authorization are implemented.</p>
+        <p className="text-sm font-medium">Account protection enabled</p>
+        <p className="text-xs text-muted-foreground">The dashboard requires a Supabase account. Workspace records are scoped by user ID and protected by row-level security. Do not store API keys or provider secrets in notes.</p>
       </div>
       <div className="card-surface divide-y mb-4">
         <Toggle label="Require confirmation for sensitive actions" sub="UI safety preference only; a real task execution runtime is not connected yet." on={s.settings.requireConfirm}
