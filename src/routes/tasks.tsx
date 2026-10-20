@@ -149,7 +149,7 @@ function Tasks() {
 
   return (
     <>
-      <PageHeader title="Task inbox" sub="Tasks are tracked locally. The agent runtime is not connected yet." />
+      <PageHeader title="Task inbox" sub="Tasks are stored in your Supabase account. The agent runtime is not connected yet." />
       <AiPlanner />
       <section className="card-surface p-4 mb-4 space-y-3">
         <div>
