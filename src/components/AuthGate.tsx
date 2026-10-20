@@ -36,7 +36,7 @@ export function AuthGate({ children }: { children: (userId: string) => ReactNode
     setMessage("");
     try {
       if (mode === "signup") {
-        const { data, error: authError } = await supabase.auth.signUp({ email: email.trim(), password });
+        const { data, error: authError } = await supabase.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: window.location.origin } });
         if (authError) throw authError;
         if (!data.session) {
           setMessage("Account request received. Check your email for the confirmation link, then sign in.");
