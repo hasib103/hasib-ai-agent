@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
-export function AuthGate({ children }: { children: ReactNode }) {
+export function AuthGate({ children }: { children: (userId: string) => ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [checking, setChecking] = useState(true);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -58,7 +58,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Checking secure session…</div>;
   }
 
-  if (session) return <>{children}</>;
+  if (session) return <>{children(session.user.id)}</>;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
