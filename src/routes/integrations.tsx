@@ -23,7 +23,7 @@ const items = [
 function Integrations() {
   return (
     <>
-      <PageHeader title="Integrations" sub="No services are connected. Connections will be added once real OAuth or server-side API setup exists." />
+      <PageHeader title="Integrations" sub="Supabase database access is connected. Other provider integrations remain unavailable until their own OAuth or server-side credentials are configured." />
       <div className="card-surface p-4 mb-4 text-sm text-muted-foreground">
         Keys are never entered here or in chat. They will be stored as server-side secrets only.
       </div>
