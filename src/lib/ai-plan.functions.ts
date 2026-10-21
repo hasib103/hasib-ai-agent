@@ -110,8 +110,11 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
           attempt: attempt + 1,
           maxAttempts,
         });
+        const retryAfter = Number(response.headers.get("retry-after"));
         await response.body?.cancel().catch(() => undefined);
-        const backoffMs = 600 * (2 ** attempt) + Math.floor(Math.random() * 300);
+        const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 5_000)
+          : 600 * (2 ** attempt) + Math.floor(Math.random() * 300);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
     } catch (error) {
