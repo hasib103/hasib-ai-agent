@@ -265,8 +265,7 @@ function Tasks() {
                 <div className="flex flex-wrap gap-2">
                   {t.status === "queued" && <button className="btn btn-primary" disabled={runnerBusy !== null} onClick={() => void runTask(t.id)}>{runnerBusy === t.id ? "Running…" : "Run securely"}</button>}
                   {t.status === "running" && <button className="btn btn-ghost" onClick={() => setStatus(t.id, "paused", "Paused by Hasib")}>Pause</button>}
-                  {["paused", "blocked", "failed", "queued"].includes(t.status) && <button className="btn btn-primary" onClick={() => setStatus(t.id, "running", "Resumed from last step")}>Resume</button>}
-                  {t.status !== "done" && <button className="btn btn-ghost" onClick={() => setStatus(t.id, "done", "Marked done")}>Mark done</button>}
+                  {["paused", "blocked", "failed"].includes(t.status) && <button className="btn btn-primary" onClick={() => setStatus(t.id, "queued", "Requeued by Hasib; use Run securely to execute")}>Requeue</button>}
                   <button className="btn btn-danger" onClick={async () => {
                     if (await confirm("Delete task?", `"${t.title}" and its history will be permanently removed.`, true))
                       set((st) => ({ ...st, tasks: st.tasks.filter((x) => x.id !== t.id) }), `Deleted task "${t.title}"`);
