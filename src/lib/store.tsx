@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { supabase } from "@/lib/supabase";
 
 export type TaskStatus = "queued" | "running" | "paused" | "blocked" | "done" | "failed";
-export type Task = { id: string; title: string; status: TaskStatus; updated: string; history: { at: string; note: string }[]; demo?: boolean };
+export type Task = { id: string; title: string; status: TaskStatus; updated: string; history: { id?: string; at: string; note: string }[]; result?: unknown; demo?: boolean };
 export type Note = { id: string; title: string; body: string; tags: string[]; updated: string; demo?: boolean };
 export type Approval = { id: string; action: string; category: "publish" | "delete" | "spend" | "security" | "message"; detail: string; requested: string; status: "pending" | "approved" | "rejected"; demo?: boolean };
 export type LogEntry = { id: string; at: string; actor: string; event: string; demo?: boolean };
@@ -53,8 +53,8 @@ export function StoreProvider({ children, userId }: { children: ReactNode; userI
     loaded.current = false;
     async function loadFromSupabase() {
       const [tasks, history, notes, approvals, log, settings, prefs] = await Promise.all([
-        supabase.from("tasks").select("id,title,status,updated_at").eq("user_id", userId),
-        supabase.from("task_history").select("task_id,at,note").eq("user_id", userId).order("at", { ascending: true }),
+        supabase.from("tasks").select("id,title,status,task_type,result,updated_at").eq("user_id", userId),
+        supabase.from("task_history").select("id,task_id,at,note").eq("user_id", userId).order("at", { ascending: true }),
         supabase.from("memory_notes").select("id,title,body,tags,updated_at").eq("user_id", userId),
         supabase.from("approvals").select("id,action,category,detail,requested_at,status").eq("user_id", userId),
         supabase.from("activity_log").select("id,at,actor,event").eq("user_id", userId).order("at", { ascending: false }),
@@ -67,11 +67,11 @@ export function StoreProvider({ children, userId }: { children: ReactNode; userI
       const historyByTask = new Map<string, { at: string; note: string }[]>();
       for (const row of history.data ?? []) {
         const entries = historyByTask.get(row.task_id) ?? [];
-        entries.push({ at: row.at, note: row.note });
+        entries.push({ id: row.id, at: row.at, note: row.note });
         historyByTask.set(row.task_id, entries);
       }
       const next: State = {
-        tasks: (tasks.data ?? []).map((row) => ({ id: row.id, title: row.title, status: row.status as TaskStatus, updated: row.updated_at, history: historyByTask.get(row.id) ?? [] })),
+        tasks: (tasks.data ?? []).map((row) => ({ id: row.id, title: row.title, status: row.status as TaskStatus, updated: row.updated_at, result: row.result, history: historyByTask.get(row.id) ?? [] })),
         notes: (notes.data ?? []).map((row) => ({ id: row.id, title: row.title, body: row.body, tags: row.tags ?? [], updated: row.updated_at })),
         approvals: (approvals.data ?? []).map((row) => ({ id: row.id, action: row.action, category: row.category as Approval["category"], detail: row.detail, requested: row.requested_at, status: row.status as Approval["status"] })),
         log: (log.data ?? []).map((row) => ({ id: row.id, at: row.at, actor: row.actor, event: row.event })),
@@ -107,7 +107,7 @@ export function StoreProvider({ children, userId }: { children: ReactNode; userI
         ...(removedApprovals.length ? [supabase.from("approvals").delete().eq("user_id", userId).in("id", removedApprovals)] : []),
         ...(removedLogs.length ? [supabase.from("activity_log").delete().eq("user_id", userId).in("id", removedLogs)] : []),
         ...s.tasks.map((task) => supabase.from("tasks").upsert({ id: task.id, user_id: userId, title: task.title, status: task.status, updated_at: task.updated }, { onConflict: "id" })),
-        ...s.tasks.flatMap((task) => task.history.map((entry, index) => supabase.from("task_history").upsert({ id: stableHistoryId(task.id, index), task_id: task.id, user_id: userId, at: entry.at, note: entry.note }, { onConflict: "id", ignoreDuplicates: true }))),
+        ...s.tasks.flatMap((task) => task.history.map((entry, index) => supabase.from("task_history").upsert({ id: entry.id ?? stableHistoryId(task.id, index), task_id: task.id, user_id: userId, at: entry.at, note: entry.note }, { onConflict: "id", ignoreDuplicates: true }))),
         ...s.notes.map((note) => supabase.from("memory_notes").upsert({ id: note.id, user_id: userId, title: note.title, body: note.body, tags: note.tags, updated_at: note.updated }, { onConflict: "id" })),
         ...s.approvals.map((item) => supabase.from("approvals").upsert({ id: item.id, user_id: userId, action: item.action, category: item.category, detail: item.detail, requested_at: item.requested, status: item.status }, { onConflict: "id" })),
         ...s.log.map((entry) => supabase.from("activity_log").upsert({ id: entry.id, user_id: userId, at: entry.at, actor: entry.actor, event: entry.event }, { onConflict: "id", ignoreDuplicates: true })),
