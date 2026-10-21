@@ -86,7 +86,7 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
 
     // Gemini may return HTTP 503 during temporary overload. Retry transient
     // upstream responses a bounded number of times with exponential backoff.
-    const retryableStatuses = new Set([408, 500, 502, 503, 504]);
+    const retryableStatuses = new Set([408, 429, 500, 502, 503, 504]);
     const maxAttempts = 3;
     let response: Response | undefined;
     try {
