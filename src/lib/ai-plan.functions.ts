@@ -124,6 +124,28 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
       throw error;
     }
 
+    // Retry exhaustion on an overloaded primary model should not immediately
+    // block the user; try a supported secondary Flash model once.
+    if (response && [408, 429, 500, 502, 503, 504].includes(response.status) && model !== "gemini-3.6-flash") {
+      try {
+        const fallbackResponse = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": apiKey,
+            },
+            body: requestBody,
+            signal: AbortSignal.timeout(30_000),
+          },
+        );
+        response = fallbackResponse;
+      } catch {
+        // Keep the original response so the caller gets a useful provider status.
+      }
+    }
+
     if (!response) {
       throw new Error("Gemini did not return a response. Please try again.");
     }
