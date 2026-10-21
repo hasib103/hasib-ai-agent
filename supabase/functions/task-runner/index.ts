@@ -1,14 +1,22 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Content-Type": "application/json",
-};
+const allowedOrigin = "https://hasib-ai-agent.onrender.com";
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: corsHeaders });
+function corsHeaders(req: Request): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Content-Type": "application/json",
+    "Vary": "Origin",
+  };
+  if (req.headers.get("Origin") === allowedOrigin) {
+    headers["Access-Control-Allow-Origin"] = allowedOrigin;
+  }
+  return headers;
+}
+
+function json(req: Request, body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: corsHeaders(req) });
 }
 
 const planSchema = {
@@ -33,15 +41,15 @@ const planSchema = {
 };
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
+  if (req.method !== "POST") return json(req, { error: "Method not allowed" }, 405);
 
   const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) return json({ error: "Sign in required" }, 401);
+  if (!authHeader?.startsWith("Bearer ")) return json(req, { error: "Sign in required" }, 401);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  if (!supabaseUrl || !anonKey) return json({ error: "Server auth is not configured" }, 500);
+  if (!supabaseUrl || !anonKey) return json(req, { error: "Server auth is not configured" }, 500);
 
   const token = authHeader.slice("Bearer ".length);
   const supabase = createClient(supabaseUrl, anonKey, {
@@ -50,16 +58,16 @@ Deno.serve(async (req: Request) => {
   });
 
   const { data: auth, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !auth.user) return json({ error: "Invalid or expired session" }, 401);
+  if (authError || !auth.user) return json(req, { error: "Invalid or expired session" }, 401);
 
   let body: { task_id?: unknown };
   try {
     body = await req.json();
   } catch {
-    return json({ error: "Expected JSON request body" }, 400);
+    return json(req, { error: "Expected JSON request body" }, 400);
   }
   if (typeof body.task_id !== "string" || !/^[0-9a-f-]{36}$/i.test(body.task_id)) {
-    return json({ error: "A valid task_id is required" }, 400);
+    return json(req, { error: "A valid task_id is required" }, 400);
   }
 
   const { data: queuedTask, error: readError } = await supabase
@@ -71,8 +79,8 @@ Deno.serve(async (req: Request) => {
     .lte("run_after", new Date().toISOString())
     .maybeSingle();
 
-  if (readError) return json({ error: "Unable to read task" }, 500);
-  if (!queuedTask) return json({ error: "Task not found, not owned by you, not queued, or not ready" }, 409);
+  if (readError) return json(req, { error: "Unable to read task" }, 500);
+  if (!queuedTask) return json(req, { error: "Task not found, not owned by you, not queued, or not ready" }, 409);
 
   // The conditional update is the atomic claim; concurrent requests cannot both win.
   const { data: task, error: claimError } = await supabase
@@ -91,8 +99,8 @@ Deno.serve(async (req: Request) => {
     .select("id,user_id,title,status,task_type,payload,attempt_count,max_attempts")
     .maybeSingle();
 
-  if (claimError) return json({ error: "Unable to claim task" }, 500);
-  if (!task) return json({ error: "Task was already claimed or is not ready" }, 409);
+  if (claimError) return json(req, { error: "Unable to claim task" }, 500);
+  if (!task) return json(req, { error: "Task was already claimed or is not ready" }, 409);
 
   const timeoutMs = Math.min(120_000, Math.max(10_000, Number(Deno.env.get("TASK_RUNNER_TIMEOUT_MS")) || 100_000));
   try {
@@ -163,7 +171,7 @@ Deno.serve(async (req: Request) => {
       updated_at: finishedAt,
     }).eq("id", task.id).eq("user_id", auth.user.id).eq("status", "running");
     if (finishError) throw new Error("Unable to persist task completion");
-    return json({ task_id: task.id, status: "done", result });
+    return json(req, { task_id: task.id, status: "done", result });
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Task execution failed";
     const nextStatus = task.attempt_count < task.max_attempts ? "queued" : "failed";
@@ -173,6 +181,6 @@ Deno.serve(async (req: Request) => {
       locked_at: null,
       updated_at: new Date().toISOString(),
     }).eq("id", task.id).eq("user_id", auth.user.id).eq("status", "running");
-    return json({ task_id: task.id, status: nextStatus, error: message }, 500);
+    return json(req, { task_id: task.id, status: nextStatus, error: message }, 500);
   }
 });
