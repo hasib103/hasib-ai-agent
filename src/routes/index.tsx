@@ -26,7 +26,7 @@ type Recognition = {
   continuous: boolean;
   interimResults: boolean;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event?: Event) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
@@ -42,7 +42,6 @@ function VoicePanel() {
   const [transcript, setTranscript] = useState("");
   const [status, setStatus] = useState("Choose a language, then speak or type your question.");
   const [language, setLanguage] = useState<VoiceLanguageCode>("bn-BD");
-  const [recognition, setRecognition] = useState<Recognition | null>(null);
   const recognitionRef = useRef<Recognition | null>(null);
   const shouldKeepListening = useRef(false);
   const finalTranscriptRef = useRef("");
@@ -138,7 +137,6 @@ function VoicePanel() {
       setStatus("Speech captured. Review the question and tap Ask AI.");
     };
     recognitionRef.current = instance;
-    setRecognition(instance);
     setError(null);
     shouldKeepListening.current = true;
     setStatus("Listening… Speak naturally; tap Stop when finished.");
