@@ -142,7 +142,30 @@ function Tasks() {
   const [f, setF] = useState<(typeof filters)[number]>("all");
   const [open, setOpen] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [runnerBusy, setRunnerBusy] = useState<string | null>(null);
+  const [runnerError, setRunnerError] = useState<string | null>(null);
   const list = s.tasks.filter((t) => f === "all" || t.status === f);
+
+  const runTask = async (id: string) => {
+    setRunnerBusy(id);
+    setRunnerError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("task-runner", { body: { task_id: id } });
+      if (error) throw new Error(error.message || "Task runner request failed");
+      if (data?.status !== "done") throw new Error(data?.error || "Task did not complete successfully");
+      setStatus(id, "done", "Secure task runner completed successfully");
+    } catch (e) {
+      setRunnerError(e instanceof Error ? e.message : "Task runner failed");
+      const { data } = await supabase.from("tasks").select("status").eq("id", id).maybeSingle();
+      const current = s.tasks.find((task) => task.id === id);
+      if (data?.status && current && data.status !== current.status &&
+          ["queued", "running", "done", "failed", "paused", "blocked"].includes(data.status)) {
+        setStatus(id, data.status as TaskStatus, "Status refreshed after task runner response");
+      }
+    } finally {
+      setRunnerBusy(null);
+    }
+  };
 
   const setStatus = (id: string, status: TaskStatus, note: string) =>
     set((st) => ({ ...st, tasks: st.tasks.map((t) => t.id === id ? { ...t, status, updated: now(), history: [...t.history, { at: now(), note }] } : t) }), `Task "${s.tasks.find((t) => t.id === id)?.title}": ${note}`);
@@ -210,10 +233,12 @@ function Tasks() {
             </button>
             {open === t.id && (
               <div className="mt-3 border-t pt-3 space-y-3">
+                {runnerError && <p className="text-sm text-destructive" role="alert">{runnerError}</p>}
                 <ol className="space-y-1.5 text-sm">
                   {t.history.map((h, i) => <li key={i} className="flex gap-2"><span className="text-xs font-mono text-muted-foreground w-16 shrink-0">{timeAgo(h.at)}</span>{h.note}</li>)}
                 </ol>
                 <div className="flex flex-wrap gap-2">
+                  {t.status === "queued" && <button className="btn btn-primary" disabled={runnerBusy !== null} onClick={() => void runTask(t.id)}>{runnerBusy === t.id ? "Running…" : "Run securely"}</button>}
                   {t.status === "running" && <button className="btn btn-ghost" onClick={() => setStatus(t.id, "paused", "Paused by Hasib")}>Pause</button>}
                   {["paused", "blocked", "failed", "queued"].includes(t.status) && <button className="btn btn-primary" onClick={() => setStatus(t.id, "running", "Resumed from last step")}>Resume</button>}
                   {t.status !== "done" && <button className="btn btn-ghost" onClick={() => setStatus(t.id, "done", "Marked done")}>Mark done</button>}
