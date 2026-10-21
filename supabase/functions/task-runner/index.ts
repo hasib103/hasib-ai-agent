@@ -1,6 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const allowedOrigin = "https://hasib-ai-agent.onrender.com";
+const allowedOrigins = new Set([
+  "https://hasib-ai-agent.onrender.com",
+  "https://hasib-ai-agent-test.onrender.com",
+]);
 
 function corsHeaders(req: Request): Record<string, string> {
   const headers: Record<string, string> = {
@@ -9,8 +12,9 @@ function corsHeaders(req: Request): Record<string, string> {
     "Content-Type": "application/json",
     "Vary": "Origin",
   };
-  if (req.headers.get("Origin") === allowedOrigin) {
-    headers["Access-Control-Allow-Origin"] = allowedOrigin;
+  const origin = req.headers.get("Origin");
+  if (origin && allowedOrigins.has(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
   }
   return headers;
 }
