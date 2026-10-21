@@ -199,12 +199,18 @@ function Tasks() {
           <p className="text-xs text-muted-foreground mt-1">Starter prompts are added as queued tasks and synced to your cloud workspace. They do not run automatically; select a task and use Run securely.</p>
         </div>
         <ul className="space-y-2">
-          {starterPrompts.map((item) => (
-            <li key={item.title} className="rounded-md border p-3">
-              <p className="text-sm font-medium">{item.title}</p>
-              <p className="text-xs text-muted-foreground mt-1">{item.prompt}</p>
-            </li>
-          ))}
+          {starterPrompts.map((item) => {
+            const alreadySaved = s.tasks.some((task) => task.title === item.title);
+            return (
+              <li key={item.title} className="rounded-md border p-3">
+                <button type="button" className="w-full text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => setTitle(item.title)} aria-label={`Use task title: ${item.title}`}>
+                  <p className="text-sm font-medium">{item.title}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{item.prompt}</p>
+                  <p className="text-xs text-primary mt-2">{alreadySaved ? "Already in inbox" : "Tap to use this task title in the New task field"}</p>
+                </button>
+              </li>
+            );
+          })}
         </ul>
         <button
           className="btn btn-primary"
