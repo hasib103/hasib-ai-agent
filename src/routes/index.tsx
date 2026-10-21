@@ -3,8 +3,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Mic, MicOff, Volume2, Square, Send, MessageCircle, RotateCcw } from "lucide-react";
 import { useStore, timeAgo, Demo, PageHeader } from "@/lib/store";
-import { askVoiceAssistant, type VoiceChatMessage, type VoiceLanguageCode } from "@/lib/voice-chat.functions";
-import { VOICE_LANGUAGE_GROUPS } from "@/lib/voice-languages";
+import { askVoiceAssistant, type VoiceChatMessage } from "@/lib/voice-chat.functions";
+import { VOICE_LANGUAGE_GROUPS, type VoiceLanguageCode } from "@/lib/voice-languages";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
