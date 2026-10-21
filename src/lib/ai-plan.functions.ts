@@ -86,7 +86,7 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
 
     // Gemini may return HTTP 503 during temporary overload. Retry transient
     // upstream responses a bounded number of times with exponential backoff.
-    const retryableStatuses = new Set([408, 500, 502, 503, 504]);
+    const retryableStatuses = new Set([408, 429, 500, 502, 503, 504]);
     const maxAttempts = 3;
     let response: Response | undefined;
     try {
@@ -110,8 +110,11 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
           attempt: attempt + 1,
           maxAttempts,
         });
+        const retryAfter = Number(response.headers.get("retry-after"));
         await response.body?.cancel().catch(() => undefined);
-        const backoffMs = 600 * (2 ** attempt) + Math.floor(Math.random() * 300);
+        const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 5_000)
+          : 600 * (2 ** attempt) + Math.floor(Math.random() * 300);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
     } catch (error) {
@@ -119,6 +122,28 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
         throw new Error("Gemini request timed out after 60 seconds. Try a shorter request or check Gemini API quota and availability.");
       }
       throw error;
+    }
+
+    // Retry exhaustion on an overloaded primary model should not immediately
+    // block the user; try a supported secondary Flash model once.
+    if (response && [408, 429, 500, 502, 503, 504].includes(response.status) && model !== "gemini-3.6-flash") {
+      try {
+        const fallbackResponse = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": apiKey,
+            },
+            body: requestBody,
+            signal: AbortSignal.timeout(30_000),
+          },
+        );
+        response = fallbackResponse;
+      } catch {
+        // Keep the original response so the caller gets a useful provider status.
+      }
     }
 
     if (!response) {

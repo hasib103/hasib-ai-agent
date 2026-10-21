@@ -21,10 +21,14 @@ const languageNames = Object.fromEntries(
   VOICE_LANGUAGES.map(({ code, name }) => [code, name]),
 ) as Record<VoiceLanguageCode, string>;
 
+const languageLabels = Object.fromEntries(
+  VOICE_LANGUAGES.map(({ code, label }) => [code, label]),
+) as Record<VoiceLanguageCode, string>;
+
 function buildSystemInstruction(language: VoiceLanguageCode): string {
   const languageInstruction = language === "auto"
     ? "Detect the language of the latest user message and reply in that same language and script, unless the user requests another language."
-    : "Answer in " + languageNames[language] + " unless the user asks for another language.";
+    : "Answer in " + languageNames[language] + " using the selected locale where relevant (" + languageLabels[language] + "). Respect regional spelling and conventions where applicable, unless the user requests another language or variant.";
 
   return "You are Hasib AI Agent, a helpful general-purpose multilingual assistant. " +
     languageInstruction + " " +
@@ -60,7 +64,7 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
     ];
 
     let response: Response | undefined;
-    const retryableStatuses = new Set([408, 500, 502, 503, 504]);
+    const retryableStatuses = new Set([408, 429, 500, 502, 503, 504]);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         response = await fetch(endpoint, {
@@ -92,13 +96,17 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
       }
 
       if (response.ok || !retryableStatuses.has(response.status) || attempt === 2) break;
+      const retryAfter = Number(response.headers.get("retry-after"));
       await response.body?.cancel().catch(() => undefined);
-      await new Promise((resolve) => setTimeout(resolve, 500 * (2 ** attempt)));
+      const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1000, 5000)
+        : 500 * (2 ** attempt);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
     }
 
     // If the primary model remains unavailable after retries, make one attempt with a
     // second supported Flash model before returning a provider-unavailable error.
-    if (response?.status === 503 && model !== "gemini-3.6-flash") {
+    if (response && [408, 429, 500, 502, 503, 504].includes(response.status) && model !== "gemini-3.6-flash") {
       try {
         const fallbackResponse = await fetch(
           "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",

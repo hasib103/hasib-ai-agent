@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Mic, MicOff, Volume2, Square, Send, MessageCircle, RotateCcw } from "lucide-react";
@@ -19,14 +19,14 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-type SpeechRecognitionResult = { 0: { transcript: string } };
-type SpeechRecognitionEvent = { results: ArrayLike<SpeechRecognitionResult> };
+type SpeechRecognitionResult = { 0: { transcript: string }; isFinal?: boolean };
+type SpeechRecognitionEvent = { results: ArrayLike<SpeechRecognitionResult>; resultIndex?: number };
 type Recognition = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event?: Event) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
@@ -42,18 +42,24 @@ function VoicePanel() {
   const [transcript, setTranscript] = useState("");
   const [status, setStatus] = useState("Choose a language, then speak or type your question.");
   const [language, setLanguage] = useState<VoiceLanguageCode>("bn-BD");
-  const [recognition, setRecognition] = useState<Recognition | null>(null);
+  const recognitionRef = useRef<Recognition | null>(null);
+  const shouldKeepListening = useRef(false);
+  const finalTranscriptRef = useRef("");
   const [chat, setChat] = useState<VoiceChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => () => {
-    recognition?.stop();
+    shouldKeepListening.current = false;
+    if (recognitionRef.current) {
+      recognitionRef.current.onend = null;
+      recognitionRef.current.stop();
+    }
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
-  }, [recognition]);
+  }, []);
 
   function speakText(text: string) {
     if (!("speechSynthesis" in window)) {
@@ -71,8 +77,9 @@ function VoicePanel() {
   }
 
   function toggleListening() {
-    if (listening && recognition) {
-      recognition.stop();
+    if (listening && recognitionRef.current) {
+      shouldKeepListening.current = false;
+      recognitionRef.current.stop();
       setListening(false);
       setStatus("Stopped listening. Review the text and tap Ask AI.");
       return;
@@ -87,30 +94,57 @@ function VoicePanel() {
 
     const instance = new SpeechRecognitionApi();
     instance.lang = language === "auto" ? (navigator.language || "en-US") : language;
-    instance.continuous = false;
+    instance.continuous = true;
     instance.interimResults = true;
+    finalTranscriptRef.current = transcript.trim();
     instance.onresult = (event) => {
-      let text = "";
-      for (let i = 0; i < event.results.length; i += 1) {
-        text += event.results[i]?.[0]?.transcript ?? "";
+      let interim = "";
+      for (let i = event.resultIndex ?? 0; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        const segment = result?.[0]?.transcript ?? "";
+        if (result?.isFinal) {
+          finalTranscriptRef.current = [finalTranscriptRef.current, segment].filter(Boolean).join(" ").trim();
+        } else {
+          interim += segment;
+        }
       }
-      setTranscript(text.trim());
+      setTranscript([finalTranscriptRef.current, interim].filter(Boolean).join(" ").trim());
     };
-    instance.onerror = () => {
-      setStatus("Microphone access failed. Check this site's microphone permission and try again.");
+    instance.onerror = (event?: Event) => {
+      const errorCode = (event as (Event & { error?: string }) | undefined)?.error;
+      if (errorCode === "no-speech" && shouldKeepListening.current) {
+        setStatus("No speech detected yet. Still listening…");
+        return;
+      }
+      if (errorCode === "aborted" && !shouldKeepListening.current) return;
+      setStatus(errorCode === "not-allowed"
+        ? "Microphone permission is blocked. Allow microphone access in browser settings and try again."
+        : "Microphone recognition encountered a problem. Check permission and try again.");
+      shouldKeepListening.current = false;
       setListening(false);
     };
     instance.onend = () => {
+      if (shouldKeepListening.current) {
+        setStatus("Listening… You can pause briefly while speaking; tap Stop when finished.");
+        window.setTimeout(() => {
+          if (shouldKeepListening.current) {
+            try { instance.start(); } catch { /* The browser may still be transitioning between sessions. */ }
+          }
+        }, 250);
+        return;
+      }
       setListening(false);
       setStatus("Speech captured. Review the question and tap Ask AI.");
     };
-    setRecognition(instance);
+    recognitionRef.current = instance;
     setError(null);
-    setStatus("Listening…");
+    shouldKeepListening.current = true;
+    setStatus("Listening… Speak naturally; tap Stop when finished.");
     setListening(true);
     try {
       instance.start();
     } catch {
+      shouldKeepListening.current = false;
       setListening(false);
       setStatus("Could not start the microphone. Check permission and try again.");
     }
@@ -168,6 +202,11 @@ function VoicePanel() {
 
   function clearConversation() {
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    if (recognitionRef.current) {
+      shouldKeepListening.current = false;
+      recognitionRef.current.stop();
+    }
+    finalTranscriptRef.current = "";
     setChat([]);
     setTranscript("");
     setError(null);
@@ -191,7 +230,7 @@ function VoicePanel() {
 
       <div className="flex flex-wrap gap-2 items-center">
         <label className="text-sm" htmlFor="voice-language">Language</label>
-        <select id="voice-language" className="min-w-0 flex-1 border rounded-md bg-background px-3 py-2 text-sm" value={language} onChange={(event) => setLanguage(event.target.value as VoiceLanguageCode)} disabled={listening || busy}>
+        <select id="voice-language" className="min-w-0 flex-1 border rounded-md bg-background px-3 py-2 text-sm" value={language} onChange={(event) => { const nextLanguage = event.target.value as VoiceLanguageCode; setLanguage(nextLanguage); setError(null); setStatus("Language changed. New speech recognition and AI answers will use the selected language."); }} disabled={listening || busy}>
           {VOICE_LANGUAGE_GROUPS.map((group) => (
             <optgroup key={group.label} label={group.label}>
               {group.languages.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}

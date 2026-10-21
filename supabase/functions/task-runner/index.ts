@@ -44,6 +44,66 @@ const planSchema = {
   required: ["summary", "steps"],
 };
 
+const retryableProviderStatuses = new Set([408, 429, 500, 502, 503, 504]);
+
+async function fetchGeminiWithFallback(
+  apiKey: string,
+  configuredModel: string,
+  requestBody: string,
+  timeoutMs: number,
+): Promise<Response> {
+  const models = configuredModel === "gemini-3.6-flash"
+    ? [configuredModel]
+    : [configuredModel, "gemini-3.6-flash"];
+  let lastResponse: Response | undefined;
+  let lastError: unknown;
+
+  for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
+    const model = models[modelIndex];
+    if (!model) continue;
+    const attempts = modelIndex === 0 ? 3 : 1;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+            body: requestBody,
+            signal: AbortSignal.timeout(Math.min(timeoutMs, 20_000)),
+          },
+        );
+        lastResponse = response;
+        if (response.ok || !retryableProviderStatuses.has(response.status)) return response;
+
+        const retryAfter = Number(response.headers.get("retry-after"));
+        await response.body?.cancel().catch(() => undefined);
+        if (attempt < attempts - 1) {
+          const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
+            ? Math.min(retryAfter * 1000, 3_000)
+            : 500 * (2 ** attempt);
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+          continue;
+        }
+        if (modelIndex === models.length - 1) return response;
+      } catch (error) {
+        lastError = error;
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 500 * (2 ** attempt)));
+          continue;
+        }
+        if (modelIndex === models.length - 1) break;
+      }
+    }
+  }
+
+  if (lastResponse) return lastResponse;
+  throw new Error(lastError instanceof Error
+    ? "Gemini provider request failed after retries: " + lastError.message
+    : "Gemini provider request failed after retries");
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
   if (req.method !== "POST") return json(req, { error: "Method not allowed" }, 405);
@@ -115,19 +175,12 @@ Deno.serve(async (req: Request) => {
       const request = typeof task.payload?.request === "string" ? task.payload.request.trim() : task.title.trim();
       if (!request || request.length > 2000) throw new Error("Task request must be 1-2000 characters");
       const model = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: "Create a safe, ordered plan. Do not claim to have executed actions. Flag destructive, external, financial, and security-sensitive steps as high risk. Return JSON matching the schema." }] },
-            contents: [{ role: "user", parts: [{ text: request }] }],
-            generationConfig: { responseMimeType: "application/json", responseSchema: planSchema, temperature: 0.2, maxOutputTokens: 1500, thinkingConfig: { thinkingLevel: "low" } },
-          }),
-          signal: AbortSignal.timeout(timeoutMs),
-        },
-      );
+      const requestBody = JSON.stringify({
+        systemInstruction: { parts: [{ text: "Create a safe, ordered plan. Do not claim to have executed actions. Flag destructive, external, financial, and security-sensitive steps as high risk. Return JSON matching the schema." }] },
+        contents: [{ role: "user", parts: [{ text: request }] }],
+        generationConfig: { responseMimeType: "application/json", responseSchema: planSchema, temperature: 0.2, maxOutputTokens: 1500, thinkingConfig: { thinkingLevel: "low" } },
+      });
+      const response = await fetchGeminiWithFallback(apiKey, model, requestBody, timeoutMs);
       if (!response.ok) throw new Error(`Planner API failed (HTTP ${response.status})`);
       const data = await response.json();
       const text = data.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text ?? "").join("").trim();
