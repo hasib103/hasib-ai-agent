@@ -64,7 +64,11 @@
 
 @layer base {
   * { border-color: var(--color-border); }
+  html { min-height: 100%; }
   body {
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-top: env(safe-area-inset-top, 0px);
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
@@ -72,6 +76,12 @@
   h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.02em; }
 }
 
+@utility safe-area-top {
+  top: env(safe-area-inset-top, 0px);
+}
+@utility safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
 @utility card-surface {
   background: var(--card);
   border: 1px solid var(--border);
