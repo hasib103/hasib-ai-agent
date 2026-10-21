@@ -59,6 +59,8 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
     }
 
     const model = process.env["GEMINI_MODEL"] || "gemini-3.8-flash";
+    const plannerTimeoutMs = Math.min(180_000, Math.max(10_000, Number(process.env["AI_PLANNER_TIMEOUT_MS"]) || 120_000));
+
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
@@ -89,7 +91,7 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
             maxOutputTokens: 1800,
           },
         }),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(plannerTimeoutMs),
       },
     );
 
