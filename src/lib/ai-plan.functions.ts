@@ -59,15 +59,17 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
     }
 
     const model = process.env["GEMINI_MODEL"] || "gemini-3.8-flash";
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          body: JSON.stringify({
           systemInstruction: {
             parts: [{
               text:
@@ -87,11 +89,18 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
             responseSchema,
             temperature: 0.2,
             maxOutputTokens: 1800,
+            thinkingConfig: { thinkingLevel: "low" },
           },
         }),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(60_000),
       },
-    );
+      );
+    } catch (error) {
+      if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+        throw new Error("Gemini request timed out after 60 seconds. Try a shorter request or check Gemini API quota and availability.");
+      }
+      throw error;
+    }
 
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
