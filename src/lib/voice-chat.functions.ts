@@ -115,6 +115,45 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
       await new Promise((resolve) => setTimeout(resolve, 500 * (2 ** attempt)));
     }
 
+    // If the primary model remains unavailable after retries, make one attempt with a
+    // second supported Flash model before returning a provider-unavailable error.
+    if (response?.status === 503 && model !== "gemini-3.6-flash") {
+      try {
+        const fallbackResponse = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": apiKey,
+            },
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [{
+                  text:
+                    "You are Hasib AI Agent, a helpful general-purpose multilingual assistant. " +
+                    "Answer in " + languageNames[data.language] + " unless the user asks for another language. " +
+                    "Be useful, clear, and honest; never claim to have searched, changed files, executed code, " +
+                    "sent messages, or performed external actions unless a connected tool actually did so. " +
+                    "For legal questions, explain that laws depend on jurisdiction and give general information. " +
+                    "For uncertain facts, say what is uncertain. Keep answers readable when spoken aloud."
+                }],
+              },
+              contents,
+              generationConfig: {
+                temperature: 0.5,
+                maxOutputTokens: 1800,
+              },
+            }),
+            signal: AbortSignal.timeout(30_000),
+          },
+        );
+        response = fallbackResponse;
+      } catch {
+        // Preserve the original 503 so the client receives the most useful known error.
+      }
+    }
+
     if (!response) throw new Error("The AI provider did not return a response.");
     if (!response.ok) {
       if (response.status === 429) {
