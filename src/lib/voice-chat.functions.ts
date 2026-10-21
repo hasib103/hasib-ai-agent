@@ -21,6 +21,10 @@ const languageNames = Object.fromEntries(
   VOICE_LANGUAGES.map(({ code, name }) => [code, name]),
 ) as Record<VoiceLanguageCode, string>;
 
+const languageLabels = Object.fromEntries(
+  VOICE_LANGUAGES.map(({ code, label }) => [code, label]),
+) as Record<VoiceLanguageCode, string>;
+
 function buildSystemInstruction(language: VoiceLanguageCode): string {
   const languageInstruction = language === "auto"
     ? "Detect the language of the latest user message and reply in that same language and script, unless the user requests another language."
