@@ -154,7 +154,7 @@ function Tasks() {
       <section className="card-surface p-4 mb-4 space-y-3">
         <div>
           <h2 className="font-semibold">Starter task prompts</h2>
-          <p className="text-xs text-muted-foreground mt-1">These prompts are saved as queued inbox tasks in this browser only. They do not run automatically; the agent runtime is not connected yet.</p>
+          <p className="text-xs text-muted-foreground mt-1">When you click “Save starter prompts to inbox,” these prompts are saved as queued tasks in your Supabase account. They do not run automatically; the agent runtime is not connected yet.</p>
         </div>
         <ul className="space-y-2">
           {starterPrompts.map((item) => (
