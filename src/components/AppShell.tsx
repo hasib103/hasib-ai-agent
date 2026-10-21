@@ -38,9 +38,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
       </aside>
       <div className="flex-1 min-w-0">
-        <div className="md:hidden flex items-center justify-between border-b px-3 py-2.5 sticky safe-area-top bg-background/90 backdrop-blur z-30">
+        <div className="mobile-header md:hidden flex items-center justify-between border-b px-3 py-2.5 sticky safe-area-top bg-background/90 backdrop-blur z-30">
           <span className="font-display font-semibold">Hasib<span className="text-primary"> AI</span></span>
-          <div className="flex gap-2 text-xs text-muted-foreground">
+          <div className="mobile-header-links flex gap-2 text-xs text-muted-foreground">
             <Link to="/integrations" activeProps={{ className: "text-primary" }}>Integrations</Link>
             <Link to="/activity" activeProps={{ className: "text-primary" }}>Log</Link>
             <Link to="/notifications" activeProps={{ className: "text-primary" }}>Alerts</Link>
@@ -49,7 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <main className="mx-auto max-w-4xl px-3 py-4 pb-24 sm:px-4 sm:py-5 sm:pb-24 md:pb-10">{children}</main>
       </div>
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t bg-card grid grid-cols-5 safe-area-bottom">
+      <nav className="mobile-bottom-nav md:hidden fixed bottom-0 inset-x-0 z-30 border-t bg-card grid grid-cols-5 safe-area-bottom">
         {nav.filter((n) => mobile.includes(n.to)).map((n) => (
           <Link key={n.to} to={n.to} className="relative flex flex-col items-center py-1.5 text-xs text-muted-foreground" activeProps={{ className: "text-primary" }} activeOptions={{ exact: n.to === "/" }}>
             <span className="text-lg leading-none">{n.icon}</span>{n.label}
