@@ -36,6 +36,7 @@ const Ctx = createContext<{
   uid: () => string;
   now: () => string;
   reset: () => void;
+  syncStatus: "loading" | "saving" | "synced" | "error";
 } | null>(null);
 
 export function StoreProvider({ children, userId }: { children: ReactNode; userId: string }) {
@@ -43,6 +44,9 @@ export function StoreProvider({ children, userId }: { children: ReactNode; userI
   const loaded = useRef(false);
   const previous = useRef<State>(seed);
   const [pending, setPending] = useState<Pending>(null);
+  const [syncStatus, setSyncStatus] = useState<"loading" | "saving" | "synced" | "error">("loading");
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const saveVersion = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -76,11 +80,12 @@ export function StoreProvider({ children, userId }: { children: ReactNode; userI
       };
       previous.current = next;
       setS(next);
+      setSyncStatus(firstError ? "error" : "synced");
       loaded.current = true;
     }
     void loadFromSupabase().catch((error: unknown) => {
       console.error("Supabase workspace load failed:", error instanceof Error ? error.message : "Unknown error");
-      if (alive) { previous.current = seed; setS(seed); loaded.current = true; }
+      if (alive) { previous.current = seed; setS(seed); setSyncStatus("error"); loaded.current = true; }
     });
     return () => { alive = false; };
   }, [userId]);
@@ -89,6 +94,8 @@ export function StoreProvider({ children, userId }: { children: ReactNode; userI
     if (!loaded.current) return;
     const before = previous.current;
     previous.current = s;
+    const version = ++saveVersion.current;
+    setSyncStatus("saving");
     const save = async () => {
       const removedTasks = before.tasks.filter((old) => !s.tasks.some((item) => item.id === old.id)).map((item) => item.id);
       const removedNotes = before.notes.filter((old) => !s.notes.some((item) => item.id === old.id)).map((item) => item.id);
@@ -108,9 +115,17 @@ export function StoreProvider({ children, userId }: { children: ReactNode; userI
         supabase.from("notification_preferences").upsert({ user_id: userId, approvals: s.prefs.approvals, task_done: s.prefs.taskDone, task_failed: s.prefs.taskFailed, daily_digest: s.prefs.dailyDigest, quiet_hours: s.prefs.quietHours, updated_at: now() }, { onConflict: "user_id" }),
       ]);
       const failed = results.find((result) => result.error);
-      if (failed?.error) console.error("Supabase workspace save failed:", failed.error.message);
+      if (failed?.error) throw new Error(failed.error.message);
     };
-    void save().catch((error: unknown) => console.error("Supabase workspace save failed:", error instanceof Error ? error.message : "Unknown error"));
+    saveQueue.current = saveQueue.current
+      .then(save)
+      .then(() => {
+        if (version === saveVersion.current) setSyncStatus("synced");
+      })
+      .catch((error: unknown) => {
+        console.error("Supabase workspace save failed:", error instanceof Error ? error.message : "Unknown error");
+        if (version === saveVersion.current) setSyncStatus("error");
+      });
   }, [s, userId]);
 
   const set = useCallback((fn: (s: State) => State, logEvent?: string) => {
@@ -124,8 +139,18 @@ export function StoreProvider({ children, userId }: { children: ReactNode; userI
   const close = (ok: boolean) => { pending?.resolve(ok); setPending(null); };
 
   return (
-    <Ctx.Provider value={{ s, set, confirm, uid, now, reset: () => setS(seed) }}>
+    <Ctx.Provider value={{ s, set, confirm, uid, now, reset: () => setS(seed), syncStatus }}>
       {children}
+      <div
+        className="fixed bottom-3 right-3 z-40 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-sm"
+        role="status"
+        aria-live="polite"
+      >
+        {syncStatus === "loading" ? "Loading cloud data…" :
+          syncStatus === "saving" ? "Saving to cloud…" :
+          syncStatus === "synced" ? "Cloud synced" :
+          "Cloud sync failed — changes may not be saved"}
+      </div>
       {pending && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-background/80 backdrop-blur-sm p-4" role="dialog" aria-modal="true">
           <div className="card-surface w-full max-w-md p-5 space-y-3">
