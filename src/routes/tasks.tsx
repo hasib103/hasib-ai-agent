@@ -113,6 +113,23 @@ const tone: Record<TaskStatus, string> = {
 };
 const filters = ["all", "running", "queued", "paused", "blocked", "done", "failed"] as const;
 
+type GeneratedPlanStep = { title: string; priority: string; risk: string; rationale: string };
+type GeneratedPlan = { summary: string; steps: GeneratedPlanStep[] };
+
+function isGeneratedPlan(value: unknown): value is GeneratedPlan {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { summary?: unknown; steps?: unknown };
+  if (typeof candidate.summary !== "string" || !Array.isArray(candidate.steps)) return false;
+  return candidate.steps.every((step: unknown) => {
+    if (typeof step !== "object" || step === null) return false;
+    const item = step as Record<string, unknown>;
+    return typeof item.title === "string" &&
+      typeof item.priority === "string" &&
+      typeof item.risk === "string" &&
+      typeof item.rationale === "string";
+  });
+}
+
 const starterPrompts = [
   {
     title: "Check app health and report",
@@ -172,7 +189,7 @@ function Tasks() {
       const { data, error } = await supabase.functions.invoke("task-runner", { body: { task_id: id } });
       if (error) throw new Error(error.message || "Task runner request failed");
       if (data?.status !== "done") throw new Error(data?.error || "Task did not complete successfully");
-      setStatus(id, "done", "Secure task runner completed successfully");
+      setStatus(id, "done", "AI plan generated and saved; no external task was executed.", data.result);
     } catch (e) {
       setRunnerError(e instanceof Error ? e.message : "Task runner failed");
       const { data } = await supabase.from("tasks").select("status").eq("id", id).maybeSingle();
@@ -186,17 +203,17 @@ function Tasks() {
     }
   };
 
-  const setStatus = (id: string, status: TaskStatus, note: string) =>
-    set((st) => ({ ...st, tasks: st.tasks.map((t) => t.id === id ? { ...t, status, updated: now(), history: [...t.history, { at: now(), note }] } : t) }), `Task "${s.tasks.find((t) => t.id === id)?.title}": ${note}`);
+  const setStatus = (id: string, status: TaskStatus, note: string, result?: unknown) =>
+    set((st) => ({ ...st, tasks: st.tasks.map((t) => t.id === id ? { ...t, status, updated: now(), ...(result !== undefined ? { result } : {}), history: [...t.history, { at: now(), note }] } : t) }), `Task "${s.tasks.find((t) => t.id === id)?.title}": ${note}`);
 
   return (
     <>
-      <PageHeader title="Task inbox" sub="Tasks sync to Supabase. Run securely executes supported task types after saving the task to the cloud." />
+      <PageHeader title="Task inbox" sub="Tasks sync to Supabase. Generate plan securely stores an AI-generated plan; it does not perform external actions automatically." />
       <AiPlanner />
       <section className="card-surface p-4 mb-4 space-y-3">
         <div>
           <h2 className="font-semibold">Starter task prompts</h2>
-          <p className="text-xs text-muted-foreground mt-1">Starter prompts are added as queued tasks and synced to your cloud workspace. They do not run automatically; select a task and use Run securely.</p>
+          <p className="text-xs text-muted-foreground mt-1">Starter prompts are added as queued tasks and synced to your cloud workspace. They do not run automatically; select a task and use Generate plan securely.</p>
         </div>
         <ul className="space-y-2">
           {starterPrompts.map((item) => {
@@ -259,11 +276,26 @@ function Tasks() {
             {open === t.id && (
               <div className="mt-3 border-t pt-3 space-y-3">
                 {runnerError && <p className="text-sm text-destructive" role="alert">{runnerError}</p>}
+                {isGeneratedPlan(t.result) && (
+                  <div className="rounded-md border p-3 space-y-2">
+                    <p className="text-sm font-medium">Generated AI plan</p>
+                    <p className="text-xs text-muted-foreground">{t.result.summary}</p>
+                    <ol className="list-decimal pl-5 space-y-2">
+                      {t.result.steps.map((step, i) => (
+                        <li key={i} className="space-y-1">
+                          <p className="text-sm">{step.title}</p>
+                          <p className="text-xs text-muted-foreground">{step.priority} priority · {step.risk} risk — {step.rationale}</p>
+                        </li>
+                      ))}
+                    </ol>
+                    <p className="text-xs text-muted-foreground">Plan generation only; no external action was executed.</p>
+                  </div>
+                )}
                 <ol className="space-y-1.5 text-sm">
-                  {t.history.map((h, i) => <li key={i} className="flex gap-2"><span className="text-xs font-mono text-muted-foreground w-16 shrink-0">{timeAgo(h.at)}</span>{h.note}</li>)}
+                  {t.history.map((h, i) => <li key={h.id ?? i} className="flex gap-2"><span className="text-xs font-mono text-muted-foreground w-16 shrink-0">{timeAgo(h.at)}</span>{h.note}</li>)}
                 </ol>
                 <div className="flex flex-wrap gap-2">
-                  {t.status === "queued" && <button className="btn btn-primary" disabled={runnerBusy !== null} onClick={() => void runTask(t.id)}>{runnerBusy === t.id ? "Running…" : "Run securely"}</button>}
+                  {t.status === "queued" && <button className="btn btn-primary" disabled={runnerBusy !== null} onClick={() => void runTask(t.id)}>{runnerBusy === t.id ? "Generating plan…" : "Generate plan securely"}</button>}
                   {t.status === "running" && <button className="btn btn-ghost" onClick={() => setStatus(t.id, "paused", "Paused by Hasib")}>Pause</button>}
                   {["paused", "blocked", "failed"].includes(t.status) && <button className="btn btn-primary" onClick={() => setStatus(t.id, "queued", "Requeued by Hasib; use Run securely to execute")}>Requeue</button>}
                   <button className="btn btn-danger" onClick={async () => {
