@@ -60,7 +60,7 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
     ];
 
     let response: Response | undefined;
-    const retryableStatuses = new Set([408, 500, 502, 503, 504]);
+    const retryableStatuses = new Set([408, 429, 500, 502, 503, 504]);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         response = await fetch(endpoint, {
