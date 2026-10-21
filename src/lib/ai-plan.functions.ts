@@ -59,47 +59,70 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
     }
 
     const model = process.env["GEMINI_MODEL"] || "gemini-3.8-flash";
-    let response: Response;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    const requestBody = JSON.stringify({
+      systemInstruction: {
+        parts: [{
+          text:
+            "You are a planning assistant inside a personal AI agent control panel. " +
+            "Turn the user's task request into a concrete action plan of 3-6 ordered steps. " +
+            "Each step gets a priority (high/medium/low) and a risk label: " +
+            "high risk = irreversible, destructive, spends money, or touches security/credentials; " +
+            "medium risk = changes shared state or contacts external services; " +
+            "low risk = local, reversible work. " +
+            "Never invent access the user has not granted; if a step needs an integration that is not connected, say so in the rationale. " +
+            "Return only data matching the provided JSON schema."
+        }]
+      },
+      contents: [{ role: "user", parts: [{ text: data.request }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema,
+        temperature: 0.2,
+        maxOutputTokens: 1800,
+        thinkingConfig: { thinkingLevel: "low" },
+      },
+    });
+
+    // Gemini may return HTTP 503 during temporary overload. Retry transient
+    // upstream responses a bounded number of times with exponential backoff.
+    const retryableStatuses = new Set([408, 500, 502, 503, 504]);
+    const maxAttempts = 3;
+    let response: Response | undefined;
     try {
-      response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-        {
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        response = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "x-goog-api-key": apiKey,
           },
-          body: JSON.stringify({
-          systemInstruction: {
-            parts: [{
-              text:
-                "You are a planning assistant inside a personal AI agent control panel. " +
-                "Turn the user's task request into a concrete action plan of 3-6 ordered steps. " +
-                "Each step gets a priority (high/medium/low) and a risk label: " +
-                "high risk = irreversible, destructive, spends money, or touches security/credentials; " +
-                "medium risk = changes shared state or contacts external services; " +
-                "low risk = local, reversible work. " +
-                "Never invent access the user has not granted; if a step needs an integration that is not connected, say so in the rationale. " +
-                "Return only data matching the provided JSON schema."
-            }]
-          },
-          contents: [{ role: "user", parts: [{ text: data.request }] }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema,
-            temperature: 0.2,
-            maxOutputTokens: 1800,
-            thinkingConfig: { thinkingLevel: "low" },
-          },
-        }),
-        signal: AbortSignal.timeout(60_000),
-      },
-      );
+          body: requestBody,
+          signal: AbortSignal.timeout(60_000),
+        });
+
+        if (response.ok || !retryableStatuses.has(response.status) || attempt === maxAttempts - 1) {
+          break;
+        }
+
+        console.warn("Transient Gemini API response; retrying", {
+          status: response.status,
+          attempt: attempt + 1,
+          maxAttempts,
+        });
+        await response.body?.cancel().catch(() => undefined);
+        const backoffMs = 600 * (2 ** attempt) + Math.floor(Math.random() * 300);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
     } catch (error) {
       if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
         throw new Error("Gemini request timed out after 60 seconds. Try a shorter request or check Gemini API quota and availability.");
       }
       throw error;
+    }
+
+    if (!response) {
+      throw new Error("Gemini did not return a response. Please try again.");
     }
 
     if (!response.ok) {
@@ -110,6 +133,12 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
       }
       if (response.status === 401 || response.status === 403) {
         throw new Error("Gemini API key was rejected or does not have permission. Check the server secret.");
+      }
+      if (response.status === 503) {
+        throw new Error("Gemini is temporarily unavailable (HTTP 503). Automatic retries did not succeed; please try again shortly.");
+      }
+      if (response.status >= 500) {
+        throw new Error(`Gemini server error (HTTP ${response.status}) after automatic retries. Please try again shortly.`);
       }
       throw new Error(`Gemini API request failed (HTTP ${response.status}). Check server logs.`);
     }
