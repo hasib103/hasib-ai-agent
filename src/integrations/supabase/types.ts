@@ -213,25 +213,55 @@ export type Database = {
       }
       tasks: {
         Row: {
+          attempt_count: number
+          completed_at: string | null
           created_at: string
           id: string
+          last_error: string | null
+          locked_at: string | null
+          max_attempts: number
+          payload: Json
+          result: Json | null
+          run_after: string
+          started_at: string | null
           status: string
+          task_type: string
           title: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          attempt_count?: number
+          completed_at?: string | null
           created_at?: string
           id?: string
+          last_error?: string | null
+          locked_at?: string | null
+          max_attempts?: number
+          payload?: Json
+          result?: Json | null
+          run_after?: string
+          started_at?: string | null
           status?: string
+          task_type?: string
           title: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          attempt_count?: number
+          completed_at?: string | null
           created_at?: string
           id?: string
+          last_error?: string | null
+          locked_at?: string | null
+          max_attempts?: number
+          payload?: Json
+          result?: Json | null
+          run_after?: string
+          started_at?: string | null
           status?: string
+          task_type?: string
           title?: string
           updated_at?: string
           user_id?: string
