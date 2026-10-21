@@ -150,6 +150,25 @@ function Tasks() {
     setRunnerBusy(id);
     setRunnerError(null);
     try {
+      const task = s.tasks.find((item) => item.id === id);
+      if (!task) throw new Error("Task is no longer in the inbox. Refresh the page and try again.");
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user.id;
+      if (sessionError || !userId) throw new Error("Sign in again before running a task.");
+
+      // Persist the task synchronously before invoking the runner. The store's
+      // background cloud sync is asynchronous, so relying on it creates a race.
+      const { error: persistError } = await supabase.from("tasks").upsert({
+        id,
+        user_id: userId,
+        title: task.title,
+        status: "queued",
+        task_type: "generate_plan",
+        payload: { request: task.title },
+        updated_at: task.updated,
+      }, { onConflict: "id" });
+      if (persistError) throw new Error("Could not save this task to cloud storage: " + persistError.message);
+
       const { data, error } = await supabase.functions.invoke("task-runner", { body: { task_id: id } });
       if (error) throw new Error(error.message || "Task runner request failed");
       if (data?.status !== "done") throw new Error(data?.error || "Task did not complete successfully");
@@ -172,12 +191,12 @@ function Tasks() {
 
   return (
     <>
-      <PageHeader title="Task inbox" sub="Tasks are stored in your Supabase account. The agent runtime is not connected yet." />
+      <PageHeader title="Task inbox" sub="Tasks sync to Supabase. Run securely executes supported task types after saving the task to the cloud." />
       <AiPlanner />
       <section className="card-surface p-4 mb-4 space-y-3">
         <div>
           <h2 className="font-semibold">Starter task prompts</h2>
-          <p className="text-xs text-muted-foreground mt-1">These prompts are saved as queued inbox tasks in this browser only. They do not run automatically; the agent runtime is not connected yet.</p>
+          <p className="text-xs text-muted-foreground mt-1">Starter prompts are added as queued tasks and synced to your cloud workspace. They do not run automatically; select a task and use Run securely.</p>
         </div>
         <ul className="space-y-2">
           {starterPrompts.map((item) => (
