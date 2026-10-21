@@ -26,19 +26,19 @@ function Integrations() {
   return (
     <>
       <PageHeader title="Integrations" sub="Supabase database access is connected. Other provider integrations remain unavailable until their own OAuth or server-side credentials are configured." />
-      <div className="card-surface p-4 mb-4 text-sm text-muted-foreground">
+      <div className="card-surface p-3 sm:p-4 mb-3 sm:mb-4 text-sm text-muted-foreground">
         Keys are never entered here or in chat. They will be stored as server-side secrets only.
       </div>
-      <div className="grid sm:grid-cols-2 gap-3">
+      <div className="grid sm:grid-cols-2 gap-2 sm:gap-3">
         {items.map((i) => (
-          <div key={i.name} className="card-surface p-4">
+          <div key={i.name} className="card-surface p-3 sm:p-4">
             <div className="flex items-center gap-2">
               <span className="font-medium flex-1">{i.name}</span>
               <span className="text-xs rounded-full px-2 py-0.5 bg-secondary text-muted-foreground">● {"connected" in i && i.connected ? "Connected" : "Not connected"}</span>
             </div>
             <p className="text-sm text-muted-foreground mt-1">{i.desc}</p>
-            <p className="text-xs font-mono text-muted-foreground mt-2">Planned setup: {i.setup}</p>
-            <button className="btn btn-ghost w-full mt-3" type="button" onClick={() => setSelected(i)}>{ "connected" in i && i.connected ? "View connection details" : "View setup requirements" }</button>
+            <p className="text-xs font-mono text-muted-foreground mt-1.5 sm:mt-2">Planned setup: {i.setup}</p>
+            <button className="btn btn-ghost w-full mt-2 sm:mt-3" type="button" onClick={() => setSelected(i)}>{ "connected" in i && i.connected ? "View connection details" : "View setup requirements" }</button>
           </div>
         ))}
       </div>
