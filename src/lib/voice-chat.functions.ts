@@ -106,7 +106,7 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
 
     // If the primary model remains unavailable after retries, make one attempt with a
     // second supported Flash model before returning a provider-unavailable error.
-    if (response?.status === 503 && model !== "gemini-3.6-flash") {
+    if (response && [502, 503, 504].includes(response.status) && model !== "gemini-3.6-flash") {
       try {
         const fallbackResponse = await fetch(
           "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
