@@ -24,3 +24,40 @@ jobs:
         run: bun run build
       - name: Run tests
         run: bun run test
+      - name: Verify Task Runner CORS allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://qmdxpvimryxwezqmjbge.supabase.co/functions/v1/task-runner"
+
+          check_origin() {
+            local origin="$1"
+            local expectation="$2"
+            local headers_file status actual
+            headers_file="$(mktemp)"
+            status="$(curl --silent --show-error --output /dev/null --dump-header "$headers_file" --write-out '%{http_code}' --request OPTIONS "$endpoint" \
+              --header "Origin: $origin" \
+              --header "Access-Control-Request-Method: POST" \
+              --header "Access-Control-Request-Headers: authorization,apikey,content-type,x-client-info")"
+            echo "Preflight for $origin returned HTTP $status"
+            cat "$headers_file"
+            if [[ "$status" != "200" ]]; then
+              echo "Expected HTTP 200 for OPTIONS preflight."
+              rm -f "$headers_file"
+              return 1
+            fi
+            actual="$(grep -i '^access-control-allow-origin:' "$headers_file" | tail -1 | cut -d: -f2- | tr -d '\r' | sed 's/^[[:space:]]*//')"
+            rm -f "$headers_file"
+            if [[ "$expectation" == "allow" && "$actual" != "$origin" ]]; then
+              echo "Expected $origin to be allowed, got '$actual'."
+              return 1
+            fi
+            if [[ "$expectation" == "deny" && -n "$actual" ]]; then
+              echo "Expected $origin to be denied, got '$actual'."
+              return 1
+            fi
+          }
+
+          check_origin "https://hasib-ai-agent.onrender.com" "allow"
+          check_origin "https://hasib-ai-agent-test.onrender.com" "allow"
+          check_origin "https://untrusted.example" "deny"
