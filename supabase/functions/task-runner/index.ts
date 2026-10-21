@@ -62,12 +62,24 @@ Deno.serve(async (req: Request) => {
     return json({ error: "A valid task_id is required" }, 400);
   }
 
-  // Atomic claim: a task can only transition from queued to running once.
+  const { data: queuedTask, error: readError } = await supabase
+    .from("tasks")
+    .select("id,user_id,title,status,task_type,payload,attempt_count,max_attempts")
+    .eq("id", body.task_id)
+    .eq("user_id", auth.user.id)
+    .eq("status", "queued")
+    .lte("run_after", new Date().toISOString())
+    .maybeSingle();
+
+  if (readError) return json({ error: "Unable to read task" }, 500);
+  if (!queuedTask) return json({ error: "Task not found, not owned by you, not queued, or not ready" }, 409);
+
+  // The conditional update is the atomic claim; concurrent requests cannot both win.
   const { data: task, error: claimError } = await supabase
     .from("tasks")
     .update({
       status: "running",
-      attempt_count: 1, // replaced below with an atomic increment RPC in a later iteration
+      attempt_count: queuedTask.attempt_count + 1,
       started_at: new Date().toISOString(),
       locked_at: new Date().toISOString(),
       last_error: null,
@@ -80,7 +92,7 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
 
   if (claimError) return json({ error: "Unable to claim task" }, 500);
-  if (!task) return json({ error: "Task not found, not owned by you, not queued, or not ready" }, 409);
+  if (!task) return json({ error: "Task was already claimed or is not ready" }, 409);
 
   const timeoutMs = Math.min(120_000, Math.max(10_000, Number(Deno.env.get("TASK_RUNNER_TIMEOUT_MS")) || 100_000));
   try {
