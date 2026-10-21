@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Mic, MicOff, Volume2, Square, Send, MessageCircle, RotateCcw } from "lucide-react";
 import { useStore, timeAgo, Demo, PageHeader } from "@/lib/store";
 import { askVoiceAssistant, type VoiceChatMessage, type VoiceLanguageCode } from "@/lib/voice-chat.functions";
+import { VOICE_LANGUAGE_GROUPS } from "@/lib/voice-languages";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
@@ -35,19 +36,6 @@ type SpeechWindow = Window & {
   webkitSpeechRecognition?: new () => Recognition;
 };
 
-const voiceLanguages: { code: VoiceLanguageCode; label: string }[] = [
-  { code: "bn-BD", label: "বাংলা" },
-  { code: "en-US", label: "English" },
-  { code: "hi-IN", label: "हिन्दी" },
-  { code: "ar-SA", label: "العربية" },
-  { code: "ur-PK", label: "اردو" },
-  { code: "es-ES", label: "Español" },
-  { code: "fr-FR", label: "Français" },
-  { code: "zh-CN", label: "中文" },
-  { code: "ja-JP", label: "日本語" },
-  { code: "ko-KR", label: "한국어" },
-];
-
 function VoicePanel() {
   const runAssistant = useServerFn(askVoiceAssistant);
   const [listening, setListening] = useState(false);
@@ -75,7 +63,7 @@ function VoicePanel() {
     if (!text.trim()) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = language;
+    utterance.lang = language === "auto" ? (navigator.language || "en-US") : language;
     utterance.onend = () => setStatus("AI answer finished.");
     utterance.onerror = () => setStatus("The answer is visible above, but this browser could not play the voice.");
     window.speechSynthesis.speak(utterance);
@@ -98,7 +86,7 @@ function VoicePanel() {
     }
 
     const instance = new SpeechRecognitionApi();
-    instance.lang = language;
+    instance.lang = language === "auto" ? (navigator.language || "en-US") : language;
     instance.continuous = false;
     instance.interimResults = true;
     instance.onresult = (event) => {
@@ -204,7 +192,11 @@ function VoicePanel() {
       <div className="flex flex-wrap gap-2 items-center">
         <label className="text-sm" htmlFor="voice-language">Language</label>
         <select id="voice-language" className="min-w-0 flex-1 border rounded-md bg-background px-3 py-2 text-sm" value={language} onChange={(event) => setLanguage(event.target.value as VoiceLanguageCode)} disabled={listening || busy}>
-          {voiceLanguages.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+          {VOICE_LANGUAGE_GROUPS.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.languages.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+            </optgroup>
+          ))}
         </select>
         <button type="button" onClick={toggleListening} disabled={busy} className="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm font-medium disabled:opacity-50" aria-pressed={listening}>
           {listening ? <><MicOff className="h-4 w-4" /> Stop</> : <><Mic className="h-4 w-4" /> Speak</>}
@@ -252,7 +244,7 @@ function VoicePanel() {
 
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       <p className="text-xs text-muted-foreground" role="status" aria-live="polite">{status}</p>
-      <p className="text-xs text-muted-foreground">Voice recognition depends on browser, device, permissions and language support. You can still type and hear answers when microphone recognition is unavailable.</p>
+      <p className="text-xs text-muted-foreground">Microphone recognition and spoken voices depend on browser, device, permissions and installed language support. For other languages, you can still type your question; choose Automatic to ask Hasib AI to answer in the language you use.</p>
     </section>
   );
 }

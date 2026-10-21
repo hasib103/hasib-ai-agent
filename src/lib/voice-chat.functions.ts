@@ -1,19 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { VOICE_LANGUAGES, VOICE_LANGUAGE_CODES, type VoiceLanguageCode } from "@/lib/voice-languages";
 import { supabase } from "@/lib/supabase";
-
-const languageCodes = [
-  "bn-BD",
-  "en-US",
-  "hi-IN",
-  "ar-SA",
-  "ur-PK",
-  "es-ES",
-  "fr-FR",
-  "zh-CN",
-  "ja-JP",
-  "ko-KR",
-] as const;
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -23,25 +11,28 @@ const messageSchema = z.object({
 const voiceChatSchema = z.object({
   message: z.string().trim().min(1, "Write or speak a question first.").max(4000),
   history: z.array(messageSchema).max(10).optional().default([]),
-  language: z.enum(languageCodes).default("bn-BD"),
+  language: z.enum(VOICE_LANGUAGE_CODES).default("bn-BD"),
   accessToken: z.string().trim().min(1).max(8192),
 });
 
 export type VoiceChatMessage = z.infer<typeof messageSchema>;
-export type VoiceLanguageCode = (typeof languageCodes)[number];
 
-const languageNames: Record<VoiceLanguageCode, string> = {
-  "bn-BD": "Bengali",
-  "en-US": "English",
-  "hi-IN": "Hindi",
-  "ar-SA": "Arabic",
-  "ur-PK": "Urdu",
-  "es-ES": "Spanish",
-  "fr-FR": "French",
-  "zh-CN": "Chinese (Mandarin)",
-  "ja-JP": "Japanese",
-  "ko-KR": "Korean",
-};
+const languageNames = Object.fromEntries(
+  VOICE_LANGUAGES.map(({ code, name }) => [code, name]),
+) as Record<VoiceLanguageCode, string>;
+
+function buildSystemInstruction(language: VoiceLanguageCode): string {
+  const languageInstruction = language === "auto"
+    ? "Detect the language of the latest user message and reply in that same language and script, unless the user requests another language."
+    : "Answer in " + languageNames[language] + " unless the user asks for another language.";
+
+  return "You are Hasib AI Agent, a helpful general-purpose multilingual assistant. " +
+    languageInstruction + " " +
+    "Be useful, clear, and honest; never claim to have searched, changed files, executed code, " +
+    "sent messages, or performed external actions unless a connected tool actually did so. " +
+    "For legal questions, explain that laws depend on jurisdiction and give general information. " +
+    "For uncertain facts, say what is uncertain. Keep answers readable when spoken aloud.";
+}
 
 export const askVoiceAssistant = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => voiceChatSchema.parse(input))
@@ -79,17 +70,7 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
             "x-goog-api-key": apiKey,
           },
           body: JSON.stringify({
-            systemInstruction: {
-              parts: [{
-                text:
-                  "You are Hasib AI Agent, a helpful general-purpose multilingual assistant. " +
-                  "Answer in " + languageNames[data.language] + " unless the user asks for another language. " +
-                  "Be useful, clear, and honest; never claim to have searched, changed files, executed code, " +
-                  "sent messages, or performed external actions unless a connected tool actually did so. " +
-                  "For legal questions, explain that laws depend on jurisdiction and give general information. " +
-                  "For uncertain facts, say what is uncertain. Keep answers readable when spoken aloud."
-              }],
-            },
+            systemInstruction: { parts: [{ text: buildSystemInstruction(data.language) }] },
             contents,
             generationConfig: {
               temperature: 0.5,
@@ -128,17 +109,7 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
               "x-goog-api-key": apiKey,
             },
             body: JSON.stringify({
-              systemInstruction: {
-                parts: [{
-                  text:
-                    "You are Hasib AI Agent, a helpful general-purpose multilingual assistant. " +
-                    "Answer in " + languageNames[data.language] + " unless the user asks for another language. " +
-                    "Be useful, clear, and honest; never claim to have searched, changed files, executed code, " +
-                    "sent messages, or performed external actions unless a connected tool actually did so. " +
-                    "For legal questions, explain that laws depend on jurisdiction and give general information. " +
-                    "For uncertain facts, say what is uncertain. Keep answers readable when spoken aloud."
-                }],
-              },
+              systemInstruction: { parts: [{ text: buildSystemInstruction(data.language) }] },
               contents,
               generationConfig: {
                 temperature: 0.5,
