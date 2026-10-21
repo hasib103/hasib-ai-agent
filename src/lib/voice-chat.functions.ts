@@ -96,8 +96,12 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
       }
 
       if (response.ok || !retryableStatuses.has(response.status) || attempt === 2) break;
+      const retryAfter = Number(response.headers.get("retry-after"));
       await response.body?.cancel().catch(() => undefined);
-      await new Promise((resolve) => setTimeout(resolve, 500 * (2 ** attempt)));
+      const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1000, 5000)
+        : 500 * (2 ** attempt);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
     }
 
     // If the primary model remains unavailable after retries, make one attempt with a
