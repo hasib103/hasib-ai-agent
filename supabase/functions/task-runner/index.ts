@@ -119,7 +119,7 @@ Deno.serve(async (req: Request) => {
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: "Create a safe, ordered plan. Do not claim to have executed actions. Flag destructive, external, financial, and security-sensitive steps as high risk. Return JSON matching the schema." }] },
             contents: [{ role: "user", parts: [{ text: request }] }],
-            generationConfig: { responseMimeType: "application/json", responseSchema: planSchema, temperature: 0.2, maxOutputTokens: 1800 },
+            generationConfig: { responseMimeType: "application/json", responseSchema: planSchema, temperature: 0.2, maxOutputTokens: 1500, thinkingConfig: { thinkingLevel: "low" } },
           }),
           signal: AbortSignal.timeout(timeoutMs),
         },

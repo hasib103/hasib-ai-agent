@@ -43,6 +43,8 @@ function AiPlanner() {
         ...plan.steps.map((step, i) => ({
           id: uid(),
           title: `[${step.priority.toUpperCase()}] ${step.title}`,
+          taskType: "generate_plan",
+          payload: { request: `${step.title}\n${step.rationale}` },
           status: "queued" as TaskStatus,
           updated: now(),
           history: [{ at: now(), note: `From AI plan (${i + 1}/${plan.steps.length}) · risk: ${step.risk} — ${step.rationale}` }],
@@ -180,14 +182,24 @@ function Tasks() {
         user_id: userId,
         title: task.title,
         status: "queued",
-        task_type: "generate_plan",
-        payload: { request: task.title },
+        task_type: task.taskType ?? "generate_plan",
+        payload: task.payload ?? { request: task.title },
+        result: task.result ?? null,
         updated_at: task.updated,
       }, { onConflict: "id" });
       if (persistError) throw new Error("Could not save this task to cloud storage: " + persistError.message);
 
       const { data, error } = await supabase.functions.invoke("task-runner", { body: { task_id: id } });
-      if (error) throw new Error(error.message || "Task runner request failed");
+      if (error) {
+        let detail = error.message || "Task runner request failed";
+        const context = (error as { context?: unknown }).context;
+        if (context instanceof Response) {
+          const responseBody = await context.clone().json().catch(() => null) as { error?: unknown; message?: unknown } | null;
+          if (typeof responseBody?.error === "string") detail = responseBody.error;
+          else if (typeof responseBody?.message === "string") detail = responseBody.message;
+        }
+        throw new Error(detail);
+      }
       if (data?.status !== "done") throw new Error(data?.error || "Task did not complete successfully");
       setStatus(id, "done", "AI plan generated and saved; no external task was executed.", data.result);
     } catch (e) {
@@ -220,10 +232,13 @@ function Tasks() {
             const alreadySaved = s.tasks.some((task) => task.title === item.title);
             return (
               <li key={item.title} className="rounded-md border p-3">
-                <button type="button" className="w-full text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => setTitle(item.title)} aria-label={`Use task title: ${item.title}`}>
+                <button type="button" className="w-full text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => {
+                  if (alreadySaved) { setTitle(item.title); return; }
+                  set((st) => ({ ...st, tasks: [{ id: uid(), title: item.title, taskType: "generate_plan", payload: { request: item.prompt }, status: "queued" as TaskStatus, updated: now(), history: [{ at: now(), note: `Saved prompt: ${item.prompt}` }] }, ...st.tasks] }), `Saved starter prompt: ${item.title}`);
+                }} aria-label={`Add starter task: ${item.title}`}>
                   <p className="text-sm font-medium">{item.title}</p>
                   <p className="text-xs text-muted-foreground mt-1">{item.prompt}</p>
-                  <p className="text-xs text-primary mt-2">{alreadySaved ? "Already in inbox" : "Tap to use this task title in the New task field"}</p>
+                  <p className="text-xs text-primary mt-2">{alreadySaved ? "Already in inbox" : "Tap to add this full prompt to the inbox"}</p>
                 </button>
               </li>
             );
@@ -241,6 +256,8 @@ function Tasks() {
                 ...fresh.map((item) => ({
                   id: uid(),
                   title: item.title,
+                  taskType: "generate_plan",
+                  payload: { request: item.prompt },
                   status: "queued" as TaskStatus,
                   updated: now(),
                   history: [{ at: now(), note: `Saved prompt: ${item.prompt}` }],
@@ -256,7 +273,7 @@ function Tasks() {
         </button>
       </section>
       <form className="flex gap-2 mb-4" onSubmit={(e) => { e.preventDefault(); if (!title.trim()) return;
-        set((st) => ({ ...st, tasks: [{ id: uid(), title: title.trim(), status: "queued", updated: now(), history: [{ at: now(), note: "Task created" }] }, ...st.tasks] }), `Created task "${title.trim()}"`); setTitle(""); }}>
+        set((st) => ({ ...st, tasks: [{ id: uid(), title: title.trim(), taskType: "generate_plan", payload: { request: title.trim() }, status: "queued", updated: now(), history: [{ at: now(), note: "Task created" }] }, ...st.tasks] }), `Created task "${title.trim()}"`); setTitle(""); }}>
         <input className="field" placeholder="New task…" value={title} onChange={(e) => setTitle(e.target.value)} />
         <button className="btn btn-primary">Add</button>
       </form>
