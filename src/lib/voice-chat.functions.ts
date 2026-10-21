@@ -28,7 +28,7 @@ const languageLabels = Object.fromEntries(
 function buildSystemInstruction(language: VoiceLanguageCode): string {
   const languageInstruction = language === "auto"
     ? "Detect the language of the latest user message and reply in that same language and script, unless the user requests another language."
-    : "Answer in " + languageNames[language] + " unless the user asks for another language.";
+    : "Answer in " + languageNames[language] + " using the selected locale where relevant (" + languageLabels[language] + "). Respect regional spelling and conventions where applicable, unless the user requests another language or variant.";
 
   return "You are Hasib AI Agent, a helpful general-purpose multilingual assistant. " +
     languageInstruction + " " +
