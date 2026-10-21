@@ -46,7 +46,7 @@ jobs:
               rm -f "$headers_file"
               return 1
             fi
-            actual="$(grep -i '^access-control-allow-origin:' "$headers_file" | tail -1 | cut -d: -f2- | tr -d '\r' | sed 's/^[[:space:]]*//')"
+            actual="$( (grep -i '^access-control-allow-origin:' "$headers_file" || true) | tail -1 | cut -d: -f2- | tr -d '\r' | sed 's/^[[:space:]]*//')"
             rm -f "$headers_file"
             if [[ "$expectation" == "allow" && "$actual" != "$origin" ]]; then
               echo "Expected $origin to be allowed, got '$actual'."
