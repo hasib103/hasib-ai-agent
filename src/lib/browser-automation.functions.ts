@@ -31,8 +31,7 @@ function assertPublicHttpsUrl(value: string): URL {
     (Number(ipv4[1]) === 192 && Number(ipv4[2]) === 168) ||
     Number(ipv4[1]) >= 224
   );
-  const privateIpv6 = host.includes(":") && !host.startsWith("::ffff:") && host !== "::1" ? false :
-    host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80");
+  const privateIpv6 = host.includes(":");
   if (blocked || privateIpv4 || privateIpv6) throw new Error("স্থানীয় বা ব্যক্তিগত নেটওয়ার্কের ঠিকানায় ব্রাউজ করা নিরাপত্তার কারণে বন্ধ।");
   return url;
 }
@@ -49,7 +48,7 @@ const browserProgram = `export default async ({ page, context }) => {
         const a = +m[1], b = +m[2];
         if (a === 0 || a === 10 || a === 127 || a >= 224 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false;
       }
-      if (h === "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80")) return false;
+      if (h.includes(":")) return false;
       return true;
     } catch { return false; }
   };
@@ -65,13 +64,17 @@ const browserProgram = `export default async ({ page, context }) => {
     trace.push("Opened " + page.url());
     for (const action of context.actions || []) {
       if (action.type === "click") {
-        await page.locator(action.selector).first().click({ timeout: 5000 });
+        await page.waitForSelector(action.selector, { timeout: 5000 });
+        await page.click(action.selector);
         trace.push("Clicked selector: " + action.selector);
       } else if (action.type === "type") {
-        await page.locator(action.selector).first().fill(action.text, { timeout: 5000 });
+        await page.waitForSelector(action.selector, { timeout: 5000 });
+        await page.click(action.selector);
+        await page.keyboard.press("Control+A");
+        await page.type(action.selector, action.text, { delay: 5 });
         trace.push("Filled selector: " + action.selector);
       } else if (action.type === "wait") {
-        await page.waitForTimeout(action.milliseconds);
+        await new Promise(resolve => setTimeout(resolve, action.milliseconds));
         trace.push("Waited " + action.milliseconds + "ms");
       }
     }
