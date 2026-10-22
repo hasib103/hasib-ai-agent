@@ -5,6 +5,7 @@ import { Mic, MicOff, Volume2, Square, Send, MessageCircle, RotateCcw, Download 
 import { useStore, timeAgo, Demo, PageHeader } from "@/lib/store";
 import { askVoiceAssistant, type VoiceChatMessage } from "@/lib/voice-chat.functions";
 import { VOICE_LANGUAGE_GROUPS, type VoiceLanguageCode } from "@/lib/voice-languages";
+import { AGENT_PROFILES, DEFAULT_AGENT_PROFILE, isAgentProfileId, type AgentProfileId } from "@/lib/agent-profiles";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
@@ -42,6 +43,8 @@ function VoicePanel() {
   const [transcript, setTranscript] = useState("");
   const [status, setStatus] = useState("Choose a language, then speak or type your question.");
   const [language, setLanguage] = useState<VoiceLanguageCode>("bn-BD");
+  const [agentProfile, setAgentProfile] = useState<AgentProfileId>(DEFAULT_AGENT_PROFILE);
+  const [profileHydrated, setProfileHydrated] = useState(false);
   const recognitionRef = useRef<Recognition | null>(null);
   const shouldKeepListening = useRef(false);
   const finalTranscriptRef = useRef("");
@@ -49,6 +52,26 @@ function VoicePanel() {
   const [busy, setBusy] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("hasib-ai-agent-profile");
+      if (isAgentProfileId(saved)) setAgentProfile(saved);
+    } catch {
+      // Profile selection still works for this session when storage is unavailable.
+    } finally {
+      setProfileHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!profileHydrated) return;
+    try {
+      window.localStorage.setItem("hasib-ai-agent-profile", agentProfile);
+    } catch {
+      // Do not block chat if browser storage is disabled or full.
+    }
+  }, [agentProfile, profileHydrated]);
 
   useEffect(() => () => {
     shouldKeepListening.current = false;
@@ -167,6 +190,7 @@ function VoicePanel() {
           message,
           history,
           language,
+          profile: agentProfile,
           accessToken,
         },
       });
@@ -256,6 +280,22 @@ function VoicePanel() {
             </button>
           </div>
         )}
+      </div>
+
+      <div className="grid gap-1 sm:grid-cols-2">
+        <label className="grid gap-1 text-sm" htmlFor="agent-profile">
+          <span className="font-medium">AI agent profile</span>
+          <select id="agent-profile" className="min-w-0 w-full border rounded-md bg-background px-3 py-2 text-sm" value={agentProfile} onChange={(event) => {
+            const nextProfile = event.target.value;
+            if (!isAgentProfileId(nextProfile)) return;
+            setAgentProfile(nextProfile);
+            setError(null);
+            setStatus("Agent profile changed. The next answer will use this role.");
+          }} disabled={busy}>
+            {AGENT_PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
+          </select>
+        </label>
+        <p className="self-end text-xs text-muted-foreground pb-2">Saved on this device. Choose a role for coding, research, learning, business, or everyday questions.</p>
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">

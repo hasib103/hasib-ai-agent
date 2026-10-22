@@ -4,6 +4,7 @@ import { VOICE_LANGUAGES, VOICE_LANGUAGE_CODES, type VoiceLanguageCode } from "@
 import { supabase } from "@/lib/supabase";
 import { normalizeAssistantAnswer } from "@/lib/plain-text-answer";
 import { enforceAiRequestQuota } from "@/lib/ai-request-quota";
+import { AGENT_PROFILE_IDS, getAgentProfileInstruction, type AgentProfileId } from "@/lib/agent-profiles";
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -14,6 +15,7 @@ const voiceChatSchema = z.object({
   message: z.string().trim().min(1, "Write or speak a question first.").max(4000),
   history: z.array(messageSchema).max(10).optional().default([]),
   language: z.enum(VOICE_LANGUAGE_CODES).default("bn-BD"),
+  profile: z.enum(AGENT_PROFILE_IDS).default("general"),
   accessToken: z.string().trim().min(1).max(8192),
 });
 
@@ -27,12 +29,13 @@ const languageLabels = Object.fromEntries(
   VOICE_LANGUAGES.map(({ code, label }) => [code, label]),
 ) as Record<VoiceLanguageCode, string>;
 
-function buildSystemInstruction(language: VoiceLanguageCode): string {
+function buildSystemInstruction(language: VoiceLanguageCode, profile: AgentProfileId): string {
   const languageInstruction = language === "auto"
     ? "Detect the language of the latest user message and reply in that same language and script, unless the user requests another language."
     : "Answer in " + languageNames[language] + " using the selected locale where relevant (" + languageLabels[language] + "). Respect regional spelling and conventions where applicable, unless the user requests another language or variant.";
 
-  return "You are Hasib AI Agent, a helpful general-purpose multilingual assistant. " +
+  return "You are Hasib AI Agent, a helpful multilingual assistant. " +
+    getAgentProfileInstruction(profile) + " " +
     languageInstruction + " " +
     "Return plain text only. Do not use Markdown bold or italic markers such as ** or *, heading markers such as #, or code backticks, because the chat UI displays plain text. Use normal sentences and simple line breaks instead. " +
     "Be useful, clear, and honest; never claim to have searched, changed files, executed code, " +
@@ -79,7 +82,7 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
             "x-goog-api-key": apiKey,
           },
           body: JSON.stringify({
-            systemInstruction: { parts: [{ text: buildSystemInstruction(data.language) }] },
+            systemInstruction: { parts: [{ text: buildSystemInstruction(data.language, data.profile) }] },
             contents,
             generationConfig: {
               temperature: 0.5,
