@@ -134,7 +134,7 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
       const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
         ? Math.min(retryAfter * 1000, 1_500)
         : 350;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, Math.max(0, deadline - Date.now())));
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, Math.max(0, deadline - Date.now()))));
     }
 
     // A single quick fallback is reserved for transient provider failures.
