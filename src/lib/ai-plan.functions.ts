@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
+import { enforceAiRequestQuota } from "@/lib/ai-request-quota";
 
 const planSchema = z.object({
   summary: z.string().describe("One-sentence summary of the plan"),
@@ -57,6 +58,8 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
     if (!apiKey) {
       throw new Error("AI is not configured. Add GEMINI_API_KEY to the server environment.");
     }
+
+    await enforceAiRequestQuota(data.accessToken, "planner");
 
     const model = process.env["GEMINI_MODEL"] || "gemini-3.8-flash";
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
