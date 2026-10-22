@@ -3,7 +3,7 @@
   "name": "Hasib AI Agent Companion",
   "version": "0.1.0",
   "description": "Send selected text to Hasib AI Agent with a user-initiated, privacy-conscious workflow.",
-  "permissions": ["activeTab", "scripting"],
+  "permissions": ["activeTab", "scripting", "clipboardWrite"],
   "action": {
     "default_title": "Hasib AI Agent",
     "default_popup": "popup.html"
