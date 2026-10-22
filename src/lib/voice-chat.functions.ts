@@ -3,6 +3,7 @@ import { z } from "zod";
 import { VOICE_LANGUAGES, VOICE_LANGUAGE_CODES, type VoiceLanguageCode } from "@/lib/voice-languages";
 import { supabase } from "@/lib/supabase";
 import { normalizeAssistantAnswer } from "@/lib/plain-text-answer";
+import { enforceAiRequestQuota } from "@/lib/ai-request-quota";
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -52,6 +53,8 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
     if (!apiKey) {
       throw new Error("AI is not configured. Add GEMINI_API_KEY to the server environment.");
     }
+
+    await enforceAiRequestQuota(data.accessToken, "chat");
 
     const model = process.env["GEMINI_MODEL"] || "gemini-3.8-flash";
     const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" +
