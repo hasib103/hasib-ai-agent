@@ -1,26 +1,41 @@
 # Security Policy — Hasib AI Agent
 
-## Current security status
+Last reviewed: 2026-10-22.
 
-This project is a starter dashboard. The deployed dashboard has not yet been verified to have account authentication, enrolled-device authorization, or a connected server-side task runtime. Do not store personal, private, or sensitive data in it until those controls are implemented and tested.
+This project is a guarded MVP. Security controls are not a substitute for verification on the deployed app and target phone. Keep sensitive or production-critical workflows disabled until the complete path has been validated.
 
-## Secrets and API keys
+## Verified controls
 
-- Store provider keys such as `GEMINI_API_KEY` only in the deployment platform's server-side environment/secret settings.
-- Never use a `VITE_` prefix for private keys; Vite-prefixed values can be embedded in browser assets.
-- Never commit `.env`, `.env.local`, access tokens, OAuth client secrets, Supabase service-role/secret keys, or private signing keys.
-- The Supabase publishable key may be exposed to browsers by design; it is not authorization by itself. Enable and test Row Level Security (RLS) on every exposed table and restrict policies to authenticated, authorized users.
-- If any real credential has ever been committed or shared publicly, revoke/rotate it at its provider. Deleting it from the latest file is not enough because Git history may retain it.
+- The dashboard has a Supabase email/password authentication gate. AI server functions validate the supplied access token with Supabase Auth.
+- The deployed task-runner Edge Function is active with JWT verification enabled. Its code validates the user, scopes tasks to that user, claims queued work conditionally, enforces a task-type allowlist, bounds retries/timeouts, and stores task outcomes/history.
+- Row Level Security is enabled on the eight public application tables. Audited policies scope user-facing records to auth.uid() = user_id; the integration-credentials table explicitly denies direct anon and authenticated client access. The checked table grants did not show anon table grants.
+- Gemini credentials are read from server-side environment variables; the browser uses a Supabase publishable key, which is public by design and is not an access-control mechanism.
+- GitHub secret scanning (Gitleaks) and CodeQL checks passed for the reviewed automation changes. Continued scans do not guarantee that every historical secret has never been exposed.
 
-## API and data controls required before private use
+## Known gaps — do not treat these as complete
 
-1. Require authentication for every private dashboard and API operation.
-2. Enforce authorization on the server for every record and action; never trust browser-only settings or a client-supplied user/device ID.
-3. Apply rate limits and request-size/time limits to AI/API endpoints to reduce quota abuse.
-4. Keep secrets server-side and use least-privilege credentials.
-5. Enable database RLS, test policies for anonymous and cross-user access, and avoid storing secrets in browser local storage.
-6. Log security-relevant events without logging API keys, access tokens, or sensitive payloads.
-7. Test these controls before enabling task execution or storing sensitive information.
+- Supabase leaked-password protection is disabled. The Supabase Security Advisor reports auth_leaked_password_protection as a warning. Enable it in Supabase Auth password/security settings and re-run the advisor: https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
+- No verified device enrollment or server-enforced device binding. The open/draft biometric work does not establish server-side authorization and has not been validated on the target Oppo A58.
+- External integrations are not connected to the production app. The audited public.app_user_connections table has zero rows. The Task Runner currently supports only generate_plan and create_memory_note; it is not an arbitrary GitHub, email, browser, or shell executor.
+- Rate limiting and per-user AI budget enforcement have not been verified. Add and test these before opening broad public access.
+- Physical phone verification remains outstanding. CI and a successful Android build do not verify microphone permissions, speech-recognition support, notches, system navigation, or spoken playback on an actual device.
+- Render production and test services both currently track main. The test service is therefore not isolated from production changes.
+
+## Credential handling
+
+- Put GEMINI_API_KEY, OAuth/provider secrets, SUPABASE_SERVICE_ROLE_KEY, and APP_USER_CONNECTION_KEY_SECRET only in the appropriate platform's server-side secret manager.
+- Never use a VITE_ prefix for private credentials, and never place secrets in browser code, local storage, an APK, documentation, logs, issues, or chat.
+- Do not read, copy, or publish a local or deployed .env file.
+- If a genuine credential was committed or shared, rotate/revoke it at the provider. Removing it from the current file does not remove it from Git history.
+- Do not log access tokens, raw provider responses containing sensitive content, or connection keys.
+
+## Operational requirements before enabling new actions
+
+1. Authenticate every private route and API; enforce per-user authorization on the server rather than trusting a client-supplied user/device ID.
+2. Use an explicit action allowlist and obtain user confirmation for publishing, deleting data, spending money, external messages, or security-sensitive changes.
+3. Apply rate limits, request-size bounds, timeouts, retry caps, idempotency/claiming, cancellation, and per-user cost budgets.
+4. Test anonymous access, cross-user access, approval enforcement, failure persistence, and audit records.
+5. Verify deployment logs and run real device tests after code changes; do not equate CI success with functional sign-off.
 
 ## Reporting
 

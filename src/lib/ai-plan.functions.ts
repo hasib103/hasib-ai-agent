@@ -89,10 +89,17 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
     // Gemini may return HTTP 503 during temporary overload. Retry transient
     // upstream responses a bounded number of times with exponential backoff.
     const retryableStatuses = new Set([408, 429, 500, 502, 503, 504]);
+    // Bound the complete planner request (primary retries and fallback), not each attempt independently.
+    const plannerTimeoutMs = Math.min(120_000, Math.max(10_000, Number(process.env["AI_PLANNER_TIMEOUT_MS"]) || 60_000));
+    const deadlineAt = Date.now() + plannerTimeoutMs;
+    const timeoutMessage = "Gemini request timed out after " + Math.round(plannerTimeoutMs / 1000) + " seconds. Try again or check Gemini API quota and availability.";
     const maxAttempts = 3;
     let response: Response | undefined;
     try {
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const remainingMs = deadlineAt - Date.now();
+        if (remainingMs <= 0) break;
+
         response = await fetch(endpoint, {
           method: "POST",
           headers: {
@@ -100,7 +107,7 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
             "x-goog-api-key": apiKey,
           },
           body: requestBody,
-          signal: AbortSignal.timeout(60_000),
+          signal: AbortSignal.timeout(remainingMs),
         });
 
         if (response.ok || !retryableStatuses.has(response.status) || attempt === maxAttempts - 1) {
@@ -117,20 +124,27 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
         const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
           ? Math.min(retryAfter * 1000, 5_000)
           : 600 * (2 ** attempt) + Math.floor(Math.random() * 300);
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        const remainingAfterResponseMs = deadlineAt - Date.now();
+        if (remainingAfterResponseMs <= 0) break;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(backoffMs, remainingAfterResponseMs)));
       }
     } catch (error) {
       if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
-        throw new Error("Gemini request timed out after 60 seconds. Try a shorter request or check Gemini API quota and availability.");
+        throw new Error(timeoutMessage);
       }
       throw error;
     }
 
+    if (response && retryableStatuses.has(response.status) && Date.now() >= deadlineAt) {
+      throw new Error(timeoutMessage);
+    }
+
     // Retry exhaustion on an overloaded primary model should not immediately
-    // block the user; try a supported secondary Flash model once.
-    if (response && [408, 429, 500, 502, 503, 504].includes(response.status) && model !== "gemini-3.6-flash") {
+    // block the user; try a supported secondary Flash model once, within the same total budget.
+    const fallbackRemainingMs = deadlineAt - Date.now();
+    if (response && retryableStatuses.has(response.status) && model !== "gemini-3.6-flash" && fallbackRemainingMs > 0) {
       try {
-        const fallbackResponse = await fetch(
+        response = await fetch(
           "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
           {
             method: "POST",
@@ -139,15 +153,16 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
               "x-goog-api-key": apiKey,
             },
             body: requestBody,
-            signal: AbortSignal.timeout(30_000),
+            signal: AbortSignal.timeout(fallbackRemainingMs),
           },
         );
-        response = fallbackResponse;
-      } catch {
+      } catch (error) {
+        if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+          throw new Error(timeoutMessage);
+        }
         // Keep the original response so the caller gets a useful provider status.
       }
     }
-
     if (!response) {
       throw new Error("Gemini did not return a response. Please try again.");
     }
