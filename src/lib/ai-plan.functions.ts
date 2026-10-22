@@ -65,6 +65,8 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
         parts: [{
           text:
             "You are a planning assistant inside a personal AI agent control panel. " +
+            "Reply in the same language as the user's request, preserving that language in the summary, step titles, and rationales. " +
+            "Understand multilingual requests, including Bengali, English, and mixed-language input; do not translate unless requested. " +
             "Turn the user's task request into a concrete action plan of 3-6 ordered steps. " +
             "Each step gets a priority (high/medium/low) and a risk label: " +
             "high risk = irreversible, destructive, spends money, or touches security/credentials; " +
