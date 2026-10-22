@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { BookmarkPlus, Check, Copy, Search, Sparkles, Trash2 } from "lucide-react";
 import { PageHeader } from "@/lib/store";
 
@@ -37,7 +37,7 @@ const starterPrompts: Prompt[] = [
 ];
 
 function PromptStudio() {
-  const [customPrompts, setCustomPrompts] = useState<Prompt[]>([]);
+  const [customPrompts, setCustomPrompts] = useState<Prompt[]>([]);\n  const [hydrated, setHydrated] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<PromptCategory | "All">("All");
   const [notice, setNotice] = useState("");
@@ -71,7 +71,7 @@ function PromptStudio() {
     } catch {
       setNotice("Browser storage is unavailable; custom prompts may not persist after leaving this page.");
     }
-  }, [customPrompts]);
+  }, [customPrompts, hydrated]);
 
   const allPrompts = useMemo(() => [...starterPrompts, ...customPrompts], [customPrompts]);
   const filtered = useMemo(() => {
@@ -91,7 +91,7 @@ function PromptStudio() {
     }
   }
 
-  function savePrompt(event: React.FormEvent<HTMLFormElement>) {
+  function savePrompt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const cleanTitle = title.trim();
     const cleanBody = body.trim();
