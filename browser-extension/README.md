@@ -23,14 +23,13 @@ The current preview intentionally uses a copy-and-paste handoff. It does **not**
 
 - `activeTab`: temporary access to the current tab after the user invokes the extension.
 - `scripting`: read the user's current text selection on that tab.
-- `storage`: reserved for future settings; not currently used to persist page content.
+- `clipboardWrite`: copy the prompt only after the user clicks the handoff button.
 
 No broad `<all_urls>` host permission, remote script, telemetry, or API secret is included.
 
 ## Before public store release
 
 - Test on supported Chromium browsers and verify keyboard/accessibility behavior.
-- Remove the unused `storage` permission if no settings feature is added.
 - Add store assets, a privacy policy, and release/versioning documentation.
 - Implement a deliberate authenticated deep-link/extension handoff in the web app before claiming one-click AI submission.
 - Run manifest/static checks and review the final permissions against the store's policies.
