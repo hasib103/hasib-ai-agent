@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Mic, MicOff, Volume2, Square, Send, MessageCircle, RotateCcw } from "lucide-react";
+import { Mic, MicOff, Volume2, Square, Send, MessageCircle, RotateCcw, Download } from "lucide-react";
 import { useStore, timeAgo, Demo, PageHeader } from "@/lib/store";
 import { askVoiceAssistant, type VoiceChatMessage } from "@/lib/voice-chat.functions";
 import { VOICE_LANGUAGE_GROUPS, type VoiceLanguageCode } from "@/lib/voice-languages";
@@ -200,6 +200,31 @@ function VoicePanel() {
     speakText(lastAnswer);
   }
 
+  function exportConversation() {
+    if (chat.length === 0) return;
+    const exportedAt = new Date();
+    const content = [
+      "# Hasib AI Agent conversation",
+      "",
+      "- Exported: " + exportedAt.toLocaleString(),
+      "- Language: " + language,
+      "",
+      ...chat.map((item) => "## " + (item.role === "user" ? "You" : "Hasib AI") + "\n\n" + item.content),
+      "",
+    ].join("\n");
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "hasib-ai-chat-" + exportedAt.toISOString().slice(0, 10) + ".md";
+    link.hidden = true;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setStatus("Conversation exported as a Markdown file.");
+  }
+
   function clearConversation() {
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     if (recognitionRef.current) {
@@ -222,9 +247,14 @@ function VoicePanel() {
           <p className="text-xs text-muted-foreground">Speak or type to chat with Hasib AI; answers can be read aloud.</p>
         </div>
         {chat.length > 0 && (
-          <button type="button" onClick={clearConversation} className="inline-flex items-center gap-1 rounded-md border px-2.5 py-2 text-xs" aria-label="Clear conversation">
-            <RotateCcw className="h-3.5 w-3.5" /> Clear
-          </button>
+          <div className="flex gap-2">
+            <button type="button" onClick={exportConversation} className="inline-flex items-center gap-1 rounded-md border px-2.5 py-2 text-xs" aria-label="Export conversation">
+              <Download className="h-3.5 w-3.5" /> Export
+            </button>
+            <button type="button" onClick={clearConversation} className="inline-flex items-center gap-1 rounded-md border px-2.5 py-2 text-xs" aria-label="Clear conversation">
+              <RotateCcw className="h-3.5 w-3.5" /> Clear
+            </button>
+          </div>
         )}
       </div>
 
