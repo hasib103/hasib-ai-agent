@@ -67,7 +67,7 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
 
     let response: Response | undefined;
     const retryableStatuses = new Set([408, 429, 500, 502, 503, 504]);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         response = await fetch(endpoint, {
           method: "POST",
@@ -83,10 +83,10 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
               maxOutputTokens: 1800,
             },
           }),
-          signal: AbortSignal.timeout(45_000),
+          signal: AbortSignal.timeout(25_000),
         });
       } catch (error) {
-        if (attempt === 2) {
+        if (attempt === 1) {
           if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
             throw new Error("The AI request timed out. Check the connection and try again.");
           }
@@ -97,7 +97,7 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
         continue;
       }
 
-      if (response.ok || !retryableStatuses.has(response.status) || attempt === 2) break;
+      if (response.ok || !retryableStatuses.has(response.status) || attempt === 1) break;
       const retryAfter = Number(response.headers.get("retry-after"));
       await response.body?.cancel().catch(() => undefined);
       const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
@@ -126,7 +126,7 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
                 maxOutputTokens: 1800,
               },
             }),
-            signal: AbortSignal.timeout(30_000),
+            signal: AbortSignal.timeout(20_000),
           },
         );
         response = fallbackResponse;

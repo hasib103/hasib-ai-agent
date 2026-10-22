@@ -1,59 +1,166 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { ExternalLink, CheckCircle2, CircleAlert, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/lib/store";
 
 export const Route = createFileRoute("/integrations")({
   head: () => ({ meta: [
     { title: "Integrations · Hasib AI Agent" },
-    { name: "description", content: "Connection status for GitHub, Supabase, Vercel, Render, Inkbox and Runway." },
+    { name: "description", content: "Manage provider setup and connection status for Hasib AI Agent." },
     { property: "og:title", content: "Integrations · Hasib AI Agent" },
-    { property: "og:description", content: "Connection status for external services." },
+    { property: "og:description", content: "Manage external service connections." },
   ] }),
   component: Integrations,
 });
 
-const items = [
-  { name: "GitHub", desc: "Repositories, issues, pull requests", setup: "OAuth app" },
-  { name: "Supabase", desc: "Authenticated database, auth and row-level security", setup: "Connected to project database", connected: true },
-  { name: "Vercel", desc: "Deployments and previews", setup: "OAuth integration" },
-  { name: "Render", desc: "Services and background workers", setup: "Server-side API key" },
-  { name: "Inkbox", desc: "Email and external messaging", setup: "Server-side API key" },
-  { name: "Runway", desc: "AI video generation", setup: "Server-side API key" },
+type Integration = {
+  name: string;
+  desc: string;
+  status: "configured" | "needs-setup";
+  statusText: string;
+  setup: string[];
+  consoleUrl: string;
+  consoleLabel: string;
+  capability: string;
+};
+
+const items: Integration[] = [
+  {
+    name: "GitHub",
+    desc: "Repositories, issues, pull requests and source changes.",
+    status: "needs-setup",
+    statusText: "Authorization not configured",
+    setup: ["Create/configure a GitHub App or OAuth App for Hasib AI Agent.", "Add the client ID and secret to server-side environment variables.", "Implement and verify the OAuth callback and least-privilege scopes."],
+    consoleUrl: "https://github.com/settings/apps",
+    consoleLabel: "Open GitHub app settings",
+    capability: "Repository and pull-request actions require a working OAuth/API integration; opening GitHub settings alone does not connect this app.",
+  },
+  {
+    name: "Supabase",
+    desc: "Authentication and the app's user-scoped database.",
+    status: "configured",
+    statusText: "App database configured",
+    setup: ["The app is configured to use its Supabase project.", "A successful live health check is not performed by this page."],
+    consoleUrl: "https://supabase.com/dashboard",
+    consoleLabel: "Open Supabase dashboard",
+    capability: "This status describes app configuration, not proof that every database operation or policy has been tested.",
+  },
+  {
+    name: "Vercel",
+    desc: "Projects, deployment status and previews.",
+    status: "needs-setup",
+    statusText: "Authorization not configured",
+    setup: ["Create a Vercel integration or provision a scoped access token.", "Store credentials only in server-side environment variables.", "Implement provider API calls and test access to the intended team/projects."],
+    consoleUrl: "https://vercel.com/account/settings",
+    consoleLabel: "Open Vercel settings",
+    capability: "The agent cannot manage deployments until server-side credentials and provider actions are implemented.",
+  },
+  {
+    name: "Render",
+    desc: "Web services, deploys, events and logs.",
+    status: "needs-setup",
+    statusText: "Authorization not configured",
+    setup: ["Create a Render API key with the minimum required access.", "Store it as a server-side secret, never in browser code.", "Connect the API and verify access to the intended workspace and services."],
+    consoleUrl: "https://dashboard.render.com",
+    consoleLabel: "Open Render dashboard",
+    capability: "A dashboard link is not an API connection. Server-side API access must be configured and tested.",
+  },
+  {
+    name: "Inkbox",
+    desc: "Communication identity, email and supported messaging workflows.",
+    status: "needs-setup",
+    statusText: "Authorization not configured",
+    setup: ["Confirm the Inkbox account and API access required for the intended workflow.", "Configure server-side credentials using the provider's supported setup.", "Implement and test only the approved communication actions."],
+    consoleUrl: "https://inkbox.ai",
+    consoleLabel: "Open Inkbox",
+    capability: "Sending messages is an external side effect and must remain behind explicit approval.",
+  },
+  {
+    name: "Runway",
+    desc: "AI video generation and supported media workflows.",
+    status: "needs-setup",
+    statusText: "Authorization not configured",
+    setup: ["Create or locate API credentials for the Runway account.", "Store the key in server-side secrets.", "Implement the API workflow and test a bounded request."],
+    consoleUrl: "https://app.runwayml.com",
+    consoleLabel: "Open Runway",
+    capability: "Media generation requires provider API access; this page does not start a generation job.",
+  },
 ];
 
 function Integrations() {
-  const [selected, setSelected] = useState<(typeof items)[number] | null>(null);
+  const [selected, setSelected] = useState<Integration | null>(null);
+
   return (
     <>
-      <PageHeader title="Integrations" sub="Supabase database access is connected. Other provider integrations remain unavailable until their own OAuth or server-side credentials are configured." />
-      <div className="card-surface p-3 sm:p-4 mb-3 sm:mb-4 text-sm text-muted-foreground">
-        Keys are never entered here or in chat. They will be stored as server-side secrets only.
+      <PageHeader
+        title="Integrations"
+        sub="Review each provider, open its official settings, and see what is needed before Hasib AI Agent can perform real actions."
+      />
+
+      <div className="card-surface p-3 sm:p-4 mb-3 sm:mb-4 flex items-start gap-3">
+        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+        <div className="text-sm">
+          <p className="font-medium">Credentials stay server-side</p>
+          <p className="mt-1 text-muted-foreground">Do not paste API keys or OAuth secrets into this page or chat. Provider links open the provider's official website; they do not grant access to Hasib AI Agent by themselves.</p>
+        </div>
       </div>
-      <div className="grid sm:grid-cols-2 gap-2 sm:gap-3">
-        {items.map((i) => (
-          <div key={i.name} className="card-surface p-3 sm:p-4">
-            <div className="flex items-center gap-2">
-              <span className="font-medium flex-1">{i.name}</span>
-              <span className="text-xs rounded-full px-2 py-0.5 bg-secondary text-muted-foreground">● {"connected" in i && i.connected ? "Connected" : "Not connected"}</span>
-            </div>
-            <p className="text-sm text-muted-foreground mt-1">{i.desc}</p>
-            <p className="text-xs font-mono text-muted-foreground mt-1.5 sm:mt-2">Planned setup: {i.setup}</p>
-            <button className="btn btn-ghost w-full mt-2 sm:mt-3" type="button" onClick={() => setSelected(i)}>{ "connected" in i && i.connected ? "View connection details" : "View setup requirements" }</button>
-          </div>
-        ))}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {items.map((item) => {
+          const configured = item.status === "configured";
+          return (
+            <article key={item.name} className="card-surface p-4 flex flex-col">
+              <div className="flex items-start gap-2">
+                <h2 className="font-semibold flex-1">{item.name}</h2>
+                <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-1 text-xs text-muted-foreground">
+                  {configured
+                    ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    : <CircleAlert className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {configured ? "Configured" : "Needs setup"}
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">{item.desc}</p>
+              <p className="mt-3 text-xs text-muted-foreground">{item.statusText}</p>
+              <div className="mt-auto grid grid-cols-1 gap-2 pt-4">
+                <button className="btn btn-primary w-full" type="button" onClick={() => setSelected(item)}>
+                  {configured ? "View connection details" : "Set up connection"}
+                </button>
+                <a className="btn btn-ghost w-full inline-flex items-center justify-center gap-2" href={item.consoleUrl} target="_blank" rel="noreferrer">
+                  {item.consoleLabel}
+                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                </a>
+              </div>
+            </article>
+          );
+        })}
       </div>
+
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="integration-dialog-title" className="card-surface w-full max-w-md p-5 space-y-3">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="presentation"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby="integration-dialog-title" className="card-surface w-full max-w-lg p-5 space-y-4">
             <div className="flex items-start gap-3">
-              <h2 id="integration-dialog-title" className="text-lg font-semibold flex-1">{selected.name} setup</h2>
+              <div className="flex-1">
+                <h2 id="integration-dialog-title" className="text-lg font-semibold">{selected.name} connection</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{selected.statusText}</p>
+              </div>
               <button type="button" className="btn btn-ghost !py-1" onClick={() => setSelected(null)} aria-label="Close setup details">Close</button>
             </div>
-            <p className="text-sm text-muted-foreground">{selected.desc}</p>
-            <p className="text-sm"><span className="font-medium">Status: </span>{"connected" in selected && selected.connected ? "Database configured in this app; this screen does not perform a live connection test." : "Not connected. The UI cannot connect this provider yet."}</p>
-            <p className="text-sm"><span className="font-medium">Required setup: </span>{selected.setup}</p>
-            <p className="text-xs text-muted-foreground">For security, configure credentials in the provider dashboard or server-side environment. Do not paste API keys into this page or into chat. No connection has been created by opening this dialog.</p>
-            <button type="button" className="btn btn-primary w-full" onClick={() => setSelected(null)}>Got it</button>
+            <p className="text-sm">{selected.capability}</p>
+            <div>
+              <h3 className="text-sm font-semibold">What is required</h3>
+              <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+                {selected.setup.map((step) => <li key={step}>{step}</li>)}
+              </ol>
+            </div>
+            <a className="btn btn-primary w-full inline-flex items-center justify-center gap-2" href={selected.consoleUrl} target="_blank" rel="noreferrer">
+              {selected.consoleLabel}
+              <ExternalLink className="h-4 w-4" aria-hidden="true" />
+            </a>
+            <p className="text-xs text-muted-foreground">No permission is granted automatically. After provider credentials and the server-side integration are configured, verify the connection before relying on agent actions.</p>
           </section>
         </div>
       )}
