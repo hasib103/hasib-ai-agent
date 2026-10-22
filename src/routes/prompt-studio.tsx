@@ -37,7 +37,8 @@ const starterPrompts: Prompt[] = [
 ];
 
 function PromptStudio() {
-  const [customPrompts, setCustomPrompts] = useState<Prompt[]>([]);\n  const [hydrated, setHydrated] = useState(false);
+  const [customPrompts, setCustomPrompts] = useState<Prompt[]>([]);
+  const [hydrated, setHydrated] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<PromptCategory | "All">("All");
   const [notice, setNotice] = useState("");
