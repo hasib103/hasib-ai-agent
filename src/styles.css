@@ -105,3 +105,92 @@
   font-family: var(--font-mono); font-size: .62rem; letter-spacing: .08em; padding: .1rem .4rem;
   border-radius: 4px; background: var(--warning); color: var(--warning-foreground); font-weight: 600;
 }
+
+/* Adaptive layout: keep the app usable across narrow phones, tablets and desktop. */
+@layer base {
+  html {
+    width: 100%;
+    overflow-x: clip;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    width: 100%;
+    overflow-x: clip;
+  }
+  #root, main, aside, section, article, form {
+    min-width: 0;
+  }
+  img, video, canvas, svg {
+    max-width: 100%;
+  }
+  pre, code {
+    overflow-wrap: anywhere;
+  }
+  button, input, select, textarea {
+    max-width: 100%;
+    min-width: 0;
+  }
+  input, select, textarea {
+    font-size: max(16px, 1rem);
+  }
+  button, a {
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 640px) {
+  main {
+    width: 100%;
+    padding-left: clamp(0.625rem, 3vw, 1rem);
+    padding-right: clamp(0.625rem, 3vw, 1rem);
+    overflow-wrap: anywhere;
+  }
+  .card-surface {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  /* Long labels and generated AI text must wrap instead of widening the viewport. */
+  .flex, .grid {
+    min-width: 0;
+  }
+  .grid > *, .flex > * {
+    min-width: 0;
+  }
+  textarea, input, select {
+    width: 100%;
+  }
+  nav a {
+    min-height: 44px;
+    justify-content: center;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 380px) {
+  /* On compact phones the top bar may use two rows rather than clipping controls. */
+  .mobile-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .mobile-header-links {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .mobile-bottom-nav a {
+    font-size: clamp(0.625rem, 2.8vw, 0.75rem);
+    padding-left: 0.125rem;
+    padding-right: 0.125rem;
+  }
+}
+
+@media (max-height: 520px) and (max-width: 900px) {
+  /* Short landscape screens retain scrolling and avoid fixed-height content traps. */
+  .mobile-bottom-nav {
+    position: sticky;
+  }
+}
