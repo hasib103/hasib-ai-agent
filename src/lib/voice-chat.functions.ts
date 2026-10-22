@@ -37,11 +37,34 @@ function buildSystemInstruction(language: VoiceLanguageCode, profile: AgentProfi
   return "You are Hasib AI Agent, a helpful multilingual assistant. " +
     getAgentProfileInstruction(profile) + " " +
     languageInstruction + " " +
+    "Use Google Search grounding when it helps answer factual, current, local, technical, research, or unfamiliar questions. Prefer primary and authoritative sources, cross-check important claims, and use current sources for changing facts. Never invent citations, URLs, dates, statistics, or search results. If search evidence is missing or conflicting, state the limitation clearly. Answer the user's actual question directly before adding useful detail. " +
     "Return plain text only. Do not use Markdown bold or italic markers such as ** or *, heading markers such as #, or code backticks, because the chat UI displays plain text. Use normal sentences and simple line breaks instead. " +
-    "Be useful, clear, and honest; never claim to have searched, changed files, executed code, " +
-    "sent messages, or performed external actions unless a connected tool actually did so. " +
-    "For legal questions, explain that laws depend on jurisdiction and give general information. " +
-    "For uncertain facts, say what is uncertain. Keep answers readable when spoken aloud.";
+    "Be useful, clear, and honest; never claim to have searched, changed files, executed code, sent messages, or performed external actions unless a connected tool actually did so. " +
+    "For legal questions, explain that laws depend on jurisdiction and give general information. For uncertain facts, say what is uncertain. Keep answers readable when spoken aloud.";
+}
+
+type GroundingChunk = { web?: { uri?: string; title?: string } };
+type GeminiPayload = {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+    groundingMetadata?: { groundingChunks?: GroundingChunk[] };
+  }>;
+  promptFeedback?: { blockReason?: string };
+};
+
+function appendVerifiedSources(answer: string, chunks: GroundingChunk[] | undefined): string {
+  if (!chunks?.length) return answer;
+  const seen = new Set<string>();
+  const sources: string[] = [];
+  for (const chunk of chunks) {
+    const uri = chunk.web?.uri;
+    if (!uri || !/^https?:\/\//i.test(uri) || seen.has(uri)) continue;
+    seen.add(uri);
+    const title = (chunk.web?.title || uri).replace(/[\r\n]+/g, " ").trim();
+    sources.push("- " + title + ": " + uri);
+    if (sources.length === 4) break;
+  }
+  return sources.length ? answer + "\n\nSources from Google Search:\n" + sources.join("\n") : answer;
 }
 
 export const askVoiceAssistant = createServerFn({ method: "POST" })
@@ -62,7 +85,6 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
     const model = process.env["GEMINI_MODEL"] || "gemini-3.8-flash";
     const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" +
       encodeURIComponent(model) + ":generateContent";
-
     const contents = [
       ...data.history.map((item) => ({
         role: item.role === "assistant" ? "model" : "user",
@@ -70,104 +92,93 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
       })),
       { role: "user", parts: [{ text: data.message }] },
     ];
+    const requestBody = JSON.stringify({
+      systemInstruction: { parts: [{ text: buildSystemInstruction(data.language, data.profile) }] },
+      contents,
+      // Native Google Search grounding adds current evidence and source metadata without
+      // requiring a separate search-provider key or exposing credentials to the browser.
+      tools: [{ google_search: {} }],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 1400,
+        thinkingConfig: { thinkingLevel: "low" },
+      },
+    });
 
-    let response: Response | undefined;
+    // Keep a strict overall budget so transient provider failures do not make the
+    // user wait through several long sequential attempts.
+    const deadline = Date.now() + 45_000;
     const retryableStatuses = new Set([408, 429, 500, 502, 503, 504]);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    let response: Response | undefined;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs < 1_000) break;
       try {
         response = await fetch(endpoint, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey,
-          },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: buildSystemInstruction(data.language, data.profile) }] },
-            contents,
-            generationConfig: {
-              temperature: 0.5,
-              maxOutputTokens: 1800,
-            },
-          }),
-          signal: AbortSignal.timeout(45_000),
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          body: requestBody,
+          signal: AbortSignal.timeout(Math.min(22_000, remainingMs)),
         });
       } catch (error) {
-        if (attempt === 2) {
+        if (attempt === 1 || Date.now() >= deadline) {
           if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
-            throw new Error("The AI request timed out. Check the connection and try again.");
+            throw new Error("AI উত্তর দিতে বেশি সময় নিচ্ছে। সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।");
           }
-          throw new Error("Could not reach the AI provider. Check the server connection and try again.");
+          throw new Error("AI সার্ভারে সংযোগ করা যাচ্ছে না। একটু পরে আবার চেষ্টা করুন।");
         }
-        const waitMs = 500 * (2 ** attempt);
-        await new Promise((resolve) => setTimeout(resolve, waitMs));
-        continue;
       }
-
-      if (response.ok || !retryableStatuses.has(response.status) || attempt === 2) break;
-      const retryAfter = Number(response.headers.get("retry-after"));
-      await response.body?.cancel().catch(() => undefined);
-      const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
-        ? Math.min(retryAfter * 1000, 5000)
-        : 500 * (2 ** attempt);
-      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      if (response?.ok || (response && !retryableStatuses.has(response.status)) || attempt === 1) break;
+      const retryAfter = Number(response?.headers.get("retry-after"));
+      await response?.body?.cancel().catch(() => undefined);
+      const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1000, 1_500)
+        : 350;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, Math.max(0, deadline - Date.now())));
     }
 
-    // If the primary model remains unavailable after retries, make one attempt with a
-    // second supported Flash model before returning a provider-unavailable error.
-    if (response && [408, 429, 500, 502, 503, 504].includes(response.status) && model !== "gemini-3.6-flash") {
-      try {
-        const fallbackResponse = await fetch(
-          "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-goog-api-key": apiKey,
+    // A single quick fallback is reserved for transient provider failures.
+    if (response && retryableStatuses.has(response.status) && model !== "gemini-3.6-flash") {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs > 1_000) {
+        try {
+          response = await fetch(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+              body: requestBody,
+              signal: AbortSignal.timeout(Math.min(12_000, remainingMs)),
             },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: buildSystemInstruction(data.language) }] },
-              contents,
-              generationConfig: {
-                temperature: 0.5,
-                maxOutputTokens: 1800,
-              },
-            }),
-            signal: AbortSignal.timeout(30_000),
-          },
-        );
-        response = fallbackResponse;
-      } catch {
-        // Preserve the original 503 so the client receives the most useful known error.
+          );
+        } catch {
+          // Preserve the primary response so the user receives a meaningful provider error.
+        }
       }
     }
 
-    if (!response) throw new Error("The AI provider did not return a response.");
+    if (!response) throw new Error("AI did not return a response within the time limit. Please try again.");
     if (!response.ok) {
-      if (response.status === 429) {
-        throw new Error("AI rate limit reached. Wait a little and try again.");
-      }
+      if (response.status === 429) throw new Error("AI rate limit reached. Wait a little and try again.");
       if (response.status === 401 || response.status === 403) {
-        throw new Error("The AI provider rejected its server API key. Check GEMINI_API_KEY in deployment settings.");
+        throw new Error("The AI provider rejected its server API key. Check the deployment secret.");
       }
-      if (response.status === 503) {
-        throw new Error("The AI provider is temporarily unavailable after retries. Please try again shortly.");
-      }
+      if (response.status === 503) throw new Error("The AI provider is temporarily unavailable. Please try again shortly.");
       if (response.status >= 500) {
         throw new Error("The AI provider returned a server error (HTTP " + response.status + "). Try again shortly.");
       }
       throw new Error("AI request failed (HTTP " + response.status + ").");
     }
 
-    const payload = await response.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      promptFeedback?: { blockReason?: string };
-    };
-    const answer = normalizeAssistantAnswer(
-      payload.candidates?.[0]?.content?.parts
-        ?.map((part) => part.text ?? "")
-        .join("")
-        .trim() ?? "",
-    );
+    const payload = await response.json() as GeminiPayload;
+    const rawAnswer = payload.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? "")
+      .join("")
+      .trim() ?? "";
+    const answer = normalizeAssistantAnswer(appendVerifiedSources(
+      rawAnswer,
+      payload.candidates?.[0]?.groundingMetadata?.groundingChunks,
+    ));
 
     if (!answer) {
       const reason = payload.promptFeedback?.blockReason;
