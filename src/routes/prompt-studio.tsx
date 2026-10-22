@@ -62,10 +62,13 @@ function PromptStudio() {
       }
     } catch {
       setNotice("Saved prompts could not be loaded. You can still use the built-in templates.");
+    } finally {
+      setHydrated(true);
     }
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(customPrompts));
     } catch {
