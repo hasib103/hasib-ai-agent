@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { VOICE_LANGUAGES, VOICE_LANGUAGE_CODES, type VoiceLanguageCode } from "@/lib/voice-languages";
 import { supabase } from "@/lib/supabase";
+import { normalizeAssistantAnswer } from "@/lib/plain-text-answer";
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -32,6 +33,7 @@ function buildSystemInstruction(language: VoiceLanguageCode): string {
 
   return "You are Hasib AI Agent, a helpful general-purpose multilingual assistant. " +
     languageInstruction + " " +
+    "Return plain text only. Do not use Markdown bold or italic markers such as ** or *, heading markers such as #, or code backticks, because the chat UI displays plain text. Use normal sentences and simple line breaks instead. " +
     "Be useful, clear, and honest; never claim to have searched, changed files, executed code, " +
     "sent messages, or performed external actions unless a connected tool actually did so. " +
     "For legal questions, explain that laws depend on jurisdiction and give general information. " +
@@ -154,10 +156,12 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
       promptFeedback?: { blockReason?: string };
     };
-    const answer = payload.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text ?? "")
-      .join("")
-      .trim();
+    const answer = normalizeAssistantAnswer(
+      payload.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text ?? "")
+        .join("")
+        .trim() ?? "",
+    );
 
     if (!answer) {
       const reason = payload.promptFeedback?.blockReason;
