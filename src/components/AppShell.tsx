@@ -8,6 +8,7 @@ const nav = [
   { to: "/tasks", label: "Tasks", icon: "☰" },
   { to: "/approvals", label: "Approvals", icon: "✓" },
   { to: "/memory", label: "Memory", icon: "✎" },
+  { to: "/prompt-studio", label: "Prompt Studio", icon: "✧" },
   { to: "/integrations", label: "Integrations", icon: "⇄" },
   { to: "/activity", label: "Activity", icon: "≡" },
   { to: "/notifications", label: "Alerts", icon: "◔" },
@@ -41,6 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="mobile-header md:hidden flex items-center justify-between border-b px-3 py-2.5 sticky safe-area-top bg-background/90 backdrop-blur z-30">
           <span className="font-display font-semibold">Hasib<span className="text-primary"> AI</span></span>
           <div className="mobile-header-links flex gap-2 text-xs text-muted-foreground">
+            <Link to="/prompt-studio" activeProps={{ className: "text-primary" }}>Prompts</Link>
             <Link to="/integrations" activeProps={{ className: "text-primary" }}>Integrations</Link>
             <Link to="/activity" activeProps={{ className: "text-primary" }}>Log</Link>
             <Link to="/notifications" activeProps={{ className: "text-primary" }}>Alerts</Link>
