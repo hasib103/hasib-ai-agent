@@ -89,6 +89,8 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
     // Gemini may return HTTP 503 during temporary overload. Retry transient
     // upstream responses a bounded number of times with exponential backoff.
     const retryableStatuses = new Set([408, 429, 500, 502, 503, 504]);
+    // Server-side override is bounded to prevent unbounded request duration.
+    const plannerTimeoutMs = Math.min(120_000, Math.max(10_000, Number(process.env["AI_PLANNER_TIMEOUT_MS"]) || 60_000));
     const maxAttempts = 3;
     let response: Response | undefined;
     try {
@@ -100,7 +102,7 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
             "x-goog-api-key": apiKey,
           },
           body: requestBody,
-          signal: AbortSignal.timeout(60_000),
+          signal: AbortSignal.timeout(plannerTimeoutMs),
         });
 
         if (response.ok || !retryableStatuses.has(response.status) || attempt === maxAttempts - 1) {
@@ -121,7 +123,7 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
       }
     } catch (error) {
       if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
-        throw new Error("Gemini request timed out after 60 seconds. Try a shorter request or check Gemini API quota and availability.");
+        throw new Error(`Gemini request timed out after ${Math.round(plannerTimeoutMs / 1000)} seconds. Try again or check Gemini API quota and availability.`);
       }
       throw error;
     }
