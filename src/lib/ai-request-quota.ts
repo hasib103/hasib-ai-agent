@@ -1,3 +1,6 @@
+import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
+
 export type AiRequestKind = "chat" | "planner";
 
 type QuotaRpcRow = { allowed: boolean; retry_after_seconds: number; daily_remaining: number };
@@ -31,4 +34,15 @@ export async function consumeAiRequestQuota(rpcCall: QuotaRpcCall, kind: AiReque
   const quota: QuotaRpcRow = { allowed: row.allowed, retry_after_seconds: Math.max(0, Math.floor(row.retry_after_seconds)), daily_remaining: Math.max(0, Math.floor(row.daily_remaining)) };
   if (!quota.allowed) throw new AiRequestQuotaExceededError(quota.retry_after_seconds, quota.daily_remaining);
   return quota;
+}
+
+export async function enforceAiRequestQuota(accessToken: string, kind: AiRequestKind): Promise<QuotaRpcRow> {
+  const authenticatedClient = createClient(supabase.supabaseUrl, supabase.supabaseKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
+  return consumeAiRequestQuota(
+    (requestKind) => authenticatedClient.rpc("consume_ai_request", { p_kind: requestKind }),
+    kind,
+  );
 }
