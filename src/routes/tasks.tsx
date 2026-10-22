@@ -220,12 +220,12 @@ function Tasks() {
 
   return (
     <>
-      <PageHeader title="Task inbox" sub="Tasks sync to Supabase. Generate plan securely stores an AI-generated plan; it does not perform external actions automatically." />
+      <PageHeader title="Task inbox" sub="Tasks sync to Supabase. Running a supported task generates and saves an AI plan; it does not execute external actions." />
       <AiPlanner />
       <section className="card-surface p-4 mb-4 space-y-3">
         <div>
           <h2 className="font-semibold">Starter task prompts</h2>
-          <p className="text-xs text-muted-foreground mt-1">Starter prompts are added as queued tasks and synced to your cloud workspace. They do not run automatically; select a task and use Generate plan securely.</p>
+          <p className="text-xs text-muted-foreground mt-1">Starter prompts are saved to your Supabase workspace as queued items. Select one and choose “Generate plan securely” to create and save a plan; no external action is performed.</p>
         </div>
         <ul className="space-y-2">
           {starterPrompts.map((item) => {
@@ -314,7 +314,7 @@ function Tasks() {
                 <div className="flex flex-wrap gap-2">
                   {t.status === "queued" && <button className="btn btn-primary" disabled={runnerBusy !== null} onClick={() => void runTask(t.id)}>{runnerBusy === t.id ? "Generating plan…" : "Generate plan securely"}</button>}
                   {t.status === "running" && <button className="btn btn-ghost" onClick={() => setStatus(t.id, "paused", "Paused by Hasib")}>Pause</button>}
-                  {["paused", "blocked", "failed"].includes(t.status) && <button className="btn btn-primary" onClick={() => setStatus(t.id, "queued", "Requeued by Hasib; use Run securely to execute")}>Requeue</button>}
+                  {["paused", "blocked", "failed"].includes(t.status) && <button className="btn btn-primary" onClick={() => setStatus(t.id, "queued", "Requeued by Hasib; generate and save a new AI plan when ready")}>Requeue</button>}
                   <button className="btn btn-danger" onClick={async () => {
                     if (await confirm("Delete task?", `"${t.title}" and its history will be permanently removed.`, true))
                       set((st) => ({ ...st, tasks: st.tasks.filter((x) => x.id !== t.id) }), `Deleted task "${t.title}"`);
