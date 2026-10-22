@@ -69,6 +69,8 @@ const browserProgram = `export default async ({ page, context }) => {
         trace.push("Clicked selector: " + action.selector);
       } else if (action.type === "type") {
         await page.waitForSelector(action.selector, { timeout: 5000 });
+        const fieldType = await page.$eval(action.selector, el => el instanceof HTMLInputElement ? el.type.toLowerCase() : "");
+        if (["password", "file", "hidden"].includes(fieldType)) throw new Error("Sensitive input types are blocked");
         await page.click(action.selector);
         await page.keyboard.press("Control+A");
         await page.type(action.selector, action.text, { delay: 5 });
@@ -78,7 +80,7 @@ const browserProgram = `export default async ({ page, context }) => {
         trace.push("Waited " + action.milliseconds + "ms");
       }
     }
-    await page.waitForTimeout(250);
+    await new Promise(resolve => setTimeout(resolve, 250));
     const data = await page.evaluate(() => ({
       title: document.title || "",
       url: location.href,
