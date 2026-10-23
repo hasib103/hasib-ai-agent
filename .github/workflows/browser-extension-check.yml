@@ -1,0 +1,29 @@
+name: Browser Extension Check
+
+on:
+  pull_request:
+    paths:
+      - "browser-extension/**"
+      - ".github/workflows/browser-extension-check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "browser-extension/**"
+      - ".github/workflows/browser-extension-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Validate manifest JSON
+        run: node -e "const m=require('./browser-extension/manifest.json'); if(m.manifest_version!==3 || !m.action?.default_popup || !Array.isArray(m.permissions)) process.exit(1); console.log('Manifest V3 valid')"
+      - name: Syntax-check popup script
+        run: node --check browser-extension/popup.js
+      - name: Verify popup assets exist
+        run: test -s browser-extension/popup.html && test -s browser-extension/README.md
