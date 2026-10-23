@@ -1,6 +1,6 @@
 # Security Policy — Hasib AI Agent
 
-Last reviewed: 2026-10-22.
+Last reviewed: 2026-10-23.
 
 This project is a guarded MVP. Security controls are not a substitute for verification on the deployed app and target phone. Keep sensitive or production-critical workflows disabled until the complete path has been validated.
 
@@ -8,16 +8,18 @@ This project is a guarded MVP. Security controls are not a substitute for verifi
 
 - The dashboard has a Supabase email/password authentication gate. AI server functions validate the supplied access token with Supabase Auth.
 - The deployed task-runner Edge Function is active with JWT verification enabled. Its code validates the user, scopes tasks to that user, claims queued work conditionally, enforces a task-type allowlist, bounds retries/timeouts, and stores task outcomes/history.
-- Row Level Security is enabled on the eight public application tables. Audited policies scope user-facing records to auth.uid() = user_id; the integration-credentials table explicitly denies direct anon and authenticated client access. The checked table grants did not show anon table grants.
+- Row Level Security is enabled on the public application tables. User-facing policies scope records to auth.uid() = user_id; the integration-credentials table denies direct anon and authenticated client access. The checked table grants did not show anon table grants.
+- AI request quotas are enforced through a database-backed RPC: chat is limited to 10 requests/minute and 100 requests/24 hours; planner is limited to 3 requests/minute and 30 requests/24 hours. The RPC fails closed when unavailable, validates auth.uid(), rejects unsupported request kinds, uses a fixed search_path, and serializes quota checks per user.
+- Direct client access to AI quota event rows is denied by table grants and RLS; the explicit deny-all policy is maintained as a migration-level defense-in-depth control. The SECURITY DEFINER warning for the authenticated-executable quota RPC is intentional: signed-in users need to call it, and the function only consumes quota for auth.uid(). Reassess this exception if the RPC's behavior or permissions change.
 - Gemini credentials are read from server-side environment variables; the browser uses a Supabase publishable key, which is public by design and is not an access-control mechanism.
-- GitHub secret scanning (Gitleaks) and CodeQL checks passed for the reviewed automation changes. Continued scans do not guarantee that every historical secret has never been exposed.
+- GitHub build/test, CodeQL, secret scanning, and Android APK workflows passed for the reviewed main-branch commit. Continued scans do not guarantee that every historical secret has never been exposed.
 
 ## Known gaps — do not treat these as complete
 
 - Supabase leaked-password protection is disabled. The Supabase Security Advisor reports auth_leaked_password_protection as a warning. Enable it in Supabase Auth password/security settings and re-run the advisor: https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
 - No verified device enrollment or server-enforced device binding. The open/draft biometric work does not establish server-side authorization and has not been validated on the target Oppo A58.
 - External integrations are not connected to the production app. The audited public.app_user_connections table has zero rows. The Task Runner currently supports only generate_plan and create_memory_note; it is not an arbitrary GitHub, email, browser, or shell executor.
-- Rate limiting and per-user AI budget enforcement have not been verified. Add and test these before opening broad public access.
+- Request-count quotas are not a token-accurate monetary budget. Per-user token/cost accounting and a hard spending ceiling remain unimplemented.
 - Physical phone verification remains outstanding. CI and a successful Android build do not verify microphone permissions, speech-recognition support, notches, system navigation, or spoken playback on an actual device.
 - Render production and test services both currently track main. The test service is therefore not isolated from production changes.
 
