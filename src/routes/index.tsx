@@ -202,7 +202,7 @@ function VoicePanel() {
           message,
           history,
           language,
-          profile: agentProfile,
+          profile: activeCustomAssistant ? "general" : agentProfile,
           customInstructions: activeCustomAssistant ? buildCustomAssistantInstruction(activeCustomAssistant) : "",
           accessToken,
         },
