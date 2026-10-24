@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 type Provider = "facebook" | "instagram" | "youtube" | "tiktok" | "linkedin" | "x" | "pinterest" | "threads" | "whatsapp";
 const PROVIDERS: Provider[] = ["facebook", "instagram", "youtube", "tiktok", "linkedin", "x", "pinterest", "threads", "whatsapp"];
 const env = (key: string) => Deno.env.get(key) ?? "";
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "Access-Control-Allow-Origin": "https://hasib-ai-agent.onrender.com", "Access-Control-Allow-Headers": "authorization, apikey, x-client-info, content-type", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Vary": "Origin" } });
+const json = (req: Request, body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors(req), "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const redirect = (url: string) => Response.redirect(url, 302);
 const supabaseUrl = env("SUPABASE_URL");
 const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY");
@@ -428,7 +428,7 @@ Deno.serve(async (req) => {
     if (action === "run_due_jobs") {
       const schedulerSecret = req.headers.get("x-social-scheduler-secret") || "";
       const { data: schedulerAuthorized, error: schedulerAuthError } = await admin.rpc("verify_social_scheduler_secret", { p_candidate: schedulerSecret });
-      if (schedulerAuthError || schedulerAuthorized !== true) return json({ error: "Unauthorized scheduler." }, 401);
+      if (schedulerAuthError || schedulerAuthorized !== true) return json(req, { error: "Unauthorized scheduler." }, 401);
       const { data: jobs, error } = await admin.from("social_publish_jobs").select("id,user_id").eq("status", "scheduled").lte("scheduled_at", new Date().toISOString()).limit(25);
       if (error) throw new Error("Could not read scheduled jobs.");
       const results = [];
@@ -436,13 +436,13 @@ Deno.serve(async (req) => {
         try { results.push(await publishJob(job.user_id, job.id)); }
         catch (e) { results.push({ id: job.id, status: "failed", error: e instanceof Error ? e.message : "Failed" }); }
       }
-      return json({ processed: results.length, results });
+      return json(req, { processed: results.length, results });
     }
     const user = await authenticate(req);
-    if (req.method !== "POST") return json({ error: "Use POST for this action." }, 405);
+    if (req.method !== "POST") return json(req, { error: "Use POST for this action." }, 405);
     const body = await req.json().catch(() => ({}));
     if (action === "connect") {
-      if (!PROVIDERS.includes(body.provider)) return json({ error: "Unsupported provider." }, 400);
+      if (!PROVIDERS.includes(body.provider)) return json(req, { error: "Unsupported provider." }, 400);
       const p = body.provider as Provider;
       const state = base64(crypto.getRandomValues(new Uint8Array(32))).replace(/[+/=]/g, (c) => ({ "+": "-", "/": "_", "=": "" })[c] || "");
       const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
@@ -450,59 +450,59 @@ Deno.serve(async (req) => {
       const challenge = base64(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)))).replace(/[+/=]/g, (c) => ({ "+": "-", "/": "_", "=": "" })[c] || "");
       const { error } = await admin.from("social_oauth_states").insert({ state_hash: await sha256(state), user_id: user.id, provider: p, code_verifier: p === "x" ? verifier : null, expires_at: new Date(Date.now() + 10 * 60_000).toISOString() });
       if (error) throw new Error("Could not start a secure OAuth session.");
-      return json({ authorization_url: oauthConfig(p, state, challenge), provider: p });
+      return json(req, { authorization_url: oauthConfig(p, state, challenge), provider: p });
     }
     if (action === "accounts") {
       const { data, error } = await admin.from("social_connections").select("id,provider,external_account_id,account_name,token_expires_at,scopes,metadata,status,created_at").eq("user_id", user.id).eq("status", "connected").order("created_at", { ascending: false });
       if (error) throw new Error("Could not load connected accounts.");
-      return json({ accounts: data || [] });
+      return json(req, { accounts: data || [] });
     }
     if (action === "disconnect") {
       const id = String(body.connection_id || "");
       const { error } = await admin.from("social_connections").update({ status: "disconnected", token_ciphertext: "", token_iv: "", refresh_ciphertext: null, refresh_iv: null, updated_at: new Date().toISOString() }).eq("id", id).eq("user_id", user.id);
       if (error) throw new Error("Could not disconnect the account.");
-      return json({ disconnected: true });
+      return json(req, { disconnected: true });
     }
     if (action === "create_job") {
       const connectionId = String(body.connection_id || "");
       const contentType = String(body.content_type || "text");
-      if (!["text","image","video","link"].includes(contentType)) return json({ error: "Invalid content type." }, 400);
+      if (!["text","image","video","link"].includes(contentType)) return json(req, { error: "Invalid content type." }, 400);
       const { data: connection } = await admin.from("social_connections").select("id").eq("id", connectionId).eq("user_id", user.id).eq("status", "connected").maybeSingle();
-      if (!connection) return json({ error: "Connected account not found." }, 404);
+      if (!connection) return json(req, { error: "Connected account not found." }, 404);
       const text = typeof body.content?.text === "string" ? body.content.text.trim() : "";
       const mediaUrl = typeof body.content?.media_url === "string" ? body.content.media_url.trim() : "";
-      if (!text && !mediaUrl) return json({ error: "Add post text or a media URL." }, 400);
-      if (mediaUrl && !safePublicHttpsUrl(mediaUrl)) return json({ error: "Media URLs must use a public HTTPS address." }, 400);
+      if (!text && !mediaUrl) return json(req, { error: "Add post text or a media URL." }, 400);
+      if (mediaUrl && !safePublicHttpsUrl(mediaUrl)) return json(req, { error: "Media URLs must use a public HTTPS address." }, 400);
       const scheduledAt = body.scheduled_at ? new Date(body.scheduled_at) : null;
-      if (scheduledAt && (!Number.isFinite(scheduledAt.getTime()) || scheduledAt.getTime() < Date.now() + 60_000)) return json({ error: "Choose a schedule at least one minute in the future." }, 400);
+      if (scheduledAt && (!Number.isFinite(scheduledAt.getTime()) || scheduledAt.getTime() < Date.now() + 60_000)) return json(req, { error: "Choose a schedule at least one minute in the future." }, 400);
       const status = body.request_approval === true ? "pending_approval" : "draft";
       const { data, error } = await admin.from("social_publish_jobs").insert({ user_id: user.id, connection_id: connectionId, content_type: contentType, content: { text, media_url: mediaUrl || undefined }, scheduled_at: scheduledAt?.toISOString() || null, status }).select("id,connection_id,content_type,content,scheduled_at,status,created_at").single();
       if (error) throw new Error("Could not save the post draft.");
-      return json({ job: data }, 201);
+      return json(req, { job: data }, 201);
     }
     if (action === "jobs") {
       const { data, error } = await admin.from("social_publish_jobs").select("id,connection_id,content_type,content,scheduled_at,status,approved_at,published_at,provider_post_id,provider_post_url,last_error,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(100);
       if (error) throw new Error("Could not load publish jobs.");
-      return json({ jobs: data || [] });
+      return json(req, { jobs: data || [] });
     }
     if (action === "approve_job") {
       const id = String(body.job_id || "");
       const { data: job, error } = await admin.from("social_publish_jobs").select("id,scheduled_at,status").eq("id", id).eq("user_id", user.id).single();
-      if (error || !job || !["draft","pending_approval"].includes(job.status)) return json({ error: "Only your draft posts can be approved." }, 409);
+      if (error || !job || !["draft","pending_approval"].includes(job.status)) return json(req, { error: "Only your draft posts can be approved." }, 409);
       const future = job.scheduled_at && new Date(job.scheduled_at).getTime() > Date.now();
       const nextStatus = future ? "scheduled" : "approved";
       const { error: updateError } = await admin.from("social_publish_jobs").update({ status: nextStatus, approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id).eq("user_id", user.id);
       if (updateError) throw new Error("Could not approve the post.");
-      return json({ id, status: nextStatus, approved_at: new Date().toISOString() });
+      return json(req, { id, status: nextStatus, approved_at: new Date().toISOString() });
     }
     if (action === "publish_job") {
       const id = String(body.job_id || "");
-      return json(await publishJob(user.id, id));
+      return json(req, await publishJob(user.id, id));
     }
     if (action === "metrics") {
       const id = String(body.connection_id || "");
       const { data: conn } = await admin.from("social_connections").select("*").eq("id", id).eq("user_id", user.id).eq("status", "connected").single();
-      if (!conn) return json({ error: "Connected account not found." }, 404);
+      if (!conn) return json(req, { error: "Connected account not found." }, 404);
       const token = await getValidAccessToken(conn);
       let metrics: Record<string, unknown> = {};
       if (conn.provider === "facebook") {
@@ -537,12 +537,12 @@ Deno.serve(async (req) => {
         throw new Error("Metrics API adapter is not yet enabled for " + conn.provider + ".");
       }
       await admin.from("social_post_metrics").insert({ user_id: user.id, connection_id: conn.id, provider_post_id: "account_snapshot", metrics });
-      return json({ provider: conn.provider, captured_at: new Date().toISOString(), metrics });
+      return json(req, { provider: conn.provider, captured_at: new Date().toISOString(), metrics });
     }
-    return json({ error: "Unknown action." }, 404);
+    return json(req, { error: "Unknown action." }, 404);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected social automation error.";
     if (action === "oauth_callback") return redirect(appUrl() + "/social-automation?error=" + encodeURIComponent(message));
-    return json({ error: message }, 400);
+    return json(req, { error: message }, 400);
   }
 });
