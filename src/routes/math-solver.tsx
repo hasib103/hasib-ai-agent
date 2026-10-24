@@ -122,11 +122,11 @@ function MathSolver() {
             className="field min-h-36"
             value={problem}
             onChange={(event) => setProblem(event.target.value)}
-            maxLength={3500}
+            maxLength={2200}
             required
             placeholder={"যেমন: 2x² - 5x - 3 = 0 সমীকরণটি ধাপে ধাপে সমাধান করো।\nঅথবা: x²-এর অন্তরক নির্ণয় করো এবং নিয়মটি বোঝাও।"}
           />
-          <p className="mt-1 text-xs text-muted-foreground">{problem.length}/3500 অক্ষর · প্রশ্নে সূত্র, মান, একক ও প্রয়োজনীয় শর্ত উল্লেখ করুন।</p>
+          <p className="mt-1 text-xs text-muted-foreground">{problem.length}/2200 অক্ষর · প্রশ্নে সূত্র, মান, একক ও প্রয়োজনীয় শর্ত উল্লেখ করুন।</p>
         </div>
         <fieldset>
           <legend className="mb-2 text-sm font-medium">সমাধানের ধরন</legend>
