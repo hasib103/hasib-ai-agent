@@ -51,7 +51,7 @@ function oauthConfig(provider: Provider, state: string, challenge?: string) {
     facebook: ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "read_insights", "instagram_basic", "instagram_content_publish", "business_management", "whatsapp_business_management", "whatsapp_business_messaging"],
     instagram: ["instagram_basic", "instagram_content_publish", "pages_show_list", "pages_read_engagement"],
     youtube: ["openid", "profile", "email", "https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"],
-    tiktok: ["user.info.basic", "video.publish", "video.upload"],
+    tiktok: ["user.info.basic", "video.list", "video.publish", "video.upload"],
     linkedin: ["openid", "profile", "w_member_social"],
     x: ["users.read", "tweet.read", "tweet.write", "offline.access"],
     pinterest: ["user_accounts:read", "boards:read", "pins:read", "pins:write"],
@@ -165,7 +165,9 @@ async function providerAccounts(provider: Provider, accessToken: string) {
   if (provider === "pinterest") {
     const d = await fetch("https://api.pinterest.com/v5/user_account", { headers: h }).then((r) => r.json());
     if (!d.username) throw new Error("Pinterest profile lookup failed.");
-    return [{ id: String(d.username), name: String(d.username), token: accessToken, platform: "pinterest" as Provider, metadata: {} }];
+    const boards = await fetch("https://api.pinterest.com/v5/boards?page_size=25", { headers: h }).then((r) => r.json()).catch(() => ({}));
+    const firstBoard = (boards.items || [])[0];
+    return [{ id: String(d.username), name: String(d.username), token: accessToken, platform: "pinterest" as Provider, metadata: firstBoard?.id ? { default_board_id: String(firstBoard.id), default_board_name: String(firstBoard.name || "") } : {} }];
   }
   if (provider === "threads") {
     const d = await fetch("https://graph.threads.net/v1.0/me?fields=id,username", { headers: h }).then((r) => r.json());
