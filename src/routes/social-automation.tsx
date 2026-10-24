@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Activity, CheckCircle2, CircleAlert, ExternalLink, Link2, LoaderCircle, RefreshCw, Send, Unplug } from "lucide-react";
 import { PageHeader } from "@/lib/store";
 import { supabase } from "@/lib/supabase";
@@ -9,7 +9,7 @@ export const Route = createFileRoute("/social-automation")({
   component: SocialAutomation,
 });
 
-const endpoint = "https://qmdxpvimryxwezqmjbge.supabase.co/functions/v1/social-automation";
+const endpoint = (supabase.supabaseUrl || "https://qmdxpvimryxwezqmjbge.supabase.co") + "/functions/v1/social-automation";
 const providers = [
   { id: "facebook", name: "Facebook Pages", note: "Page posts and page insights; Meta app review may be required." },
   { id: "instagram", name: "Instagram", note: "Business/Creator media publishing; a linked professional account and public media URL are required." },
@@ -91,7 +91,7 @@ function SocialAutomation() {
     finally { setBusy(""); }
   }
 
-  async function createDraft(event: React.FormEvent<HTMLFormElement>) {
+  async function createDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!connectionId) { setError("প্রথমে একটি সংযুক্ত অ্যাকাউন্ট বেছে নিন।"); return; }
     setBusy("create"); setError(""); setNotice("");
