@@ -6,6 +6,7 @@ import { useStore, timeAgo, Demo, PageHeader } from "@/lib/store";
 import { askVoiceAssistant, type VoiceChatMessage } from "@/lib/voice-chat.functions";
 import { VOICE_LANGUAGE_GROUPS, type VoiceLanguageCode } from "@/lib/voice-languages";
 import { AGENT_PROFILES, DEFAULT_AGENT_PROFILE, isAgentProfileId, type AgentProfileId } from "@/lib/agent-profiles";
+import { ACTIVE_CUSTOM_ASSISTANT_KEY, buildCustomAssistantInstruction, loadCustomAssistants, type CustomAssistant } from "@/lib/custom-assistants";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
@@ -44,6 +45,9 @@ function VoicePanel() {
   const [status, setStatus] = useState("Choose a language, then speak or type your question.");
   const [language, setLanguage] = useState<VoiceLanguageCode>("bn-BD");
   const [agentProfile, setAgentProfile] = useState<AgentProfileId>(DEFAULT_AGENT_PROFILE);
+  const [customAssistants, setCustomAssistants] = useState<CustomAssistant[]>([]);
+  const [activeCustomAssistantId, setActiveCustomAssistantId] = useState<string | null>(null);
+  const activeCustomAssistant = customAssistants.find((item) => item.id === activeCustomAssistantId) ?? null;
   const [profileHydrated, setProfileHydrated] = useState(false);
   const recognitionRef = useRef<Recognition | null>(null);
   const shouldKeepListening = useRef(false);
@@ -57,6 +61,14 @@ function VoicePanel() {
     try {
       const saved = window.localStorage.getItem("hasib-ai-agent-profile");
       if (isAgentProfileId(saved)) setAgentProfile(saved);
+      const savedAssistants = loadCustomAssistants();
+      setCustomAssistants(savedAssistants);
+      const activeId = window.localStorage.getItem(ACTIVE_CUSTOM_ASSISTANT_KEY);
+      if (activeId && savedAssistants.some((item) => item.id === activeId)) {
+        setActiveCustomAssistantId(activeId);
+      } else if (activeId) {
+        window.localStorage.removeItem(ACTIVE_CUSTOM_ASSISTANT_KEY);
+      }
     } catch {
       // Profile selection still works for this session when storage is unavailable.
     } finally {
@@ -190,7 +202,8 @@ function VoicePanel() {
           message,
           history,
           language,
-          profile: agentProfile,
+          profile: activeCustomAssistant ? "general" : agentProfile,
+          customInstructions: activeCustomAssistant ? buildCustomAssistantInstruction(activeCustomAssistant) : "",
           accessToken,
         },
       });
@@ -285,17 +298,36 @@ function VoicePanel() {
       <div className="grid gap-1 sm:grid-cols-2">
         <label className="grid gap-1 text-sm" htmlFor="agent-profile">
           <span className="font-medium">AI agent profile</span>
-          <select id="agent-profile" className="min-w-0 w-full border rounded-md bg-background px-3 py-2 text-sm" value={agentProfile} onChange={(event) => {
+          <select id="agent-profile" className="min-w-0 w-full border rounded-md bg-background px-3 py-2 text-sm" value={activeCustomAssistantId ? "custom:" + activeCustomAssistantId : agentProfile} onChange={(event) => {
             const nextProfile = event.target.value;
+            if (nextProfile.startsWith("custom:")) {
+              const customId = nextProfile.slice("custom:".length);
+              if (!customAssistants.some((item) => item.id === customId)) return;
+              setActiveCustomAssistantId(customId);
+              try { window.localStorage.setItem(ACTIVE_CUSTOM_ASSISTANT_KEY, customId); } catch { /* The active choice still works for this session. */ }
+              setError(null);
+              setStatus("আপনার কাস্টম সহকারী সক্রিয় হয়েছে। পরের উত্তরটি তার নির্দেশনা অনুসরণ করবে।");
+              return;
+            }
             if (!isAgentProfileId(nextProfile)) return;
             setAgentProfile(nextProfile);
+            setActiveCustomAssistantId(null);
+            try { window.localStorage.removeItem(ACTIVE_CUSTOM_ASSISTANT_KEY); } catch { /* The built-in profile still works for this session. */ }
             setError(null);
             setStatus("Agent profile changed. The next answer will use this role.");
           }} disabled={busy}>
-            {AGENT_PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
+            <optgroup label="Built-in profiles">
+              {AGENT_PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
+            </optgroup>
+            {customAssistants.length > 0 && <optgroup label="আপনার তৈরি সহকারী">
+              {customAssistants.map((assistant) => <option key={assistant.id} value={"custom:" + assistant.id}>{assistant.name}</option>)}
+            </optgroup>}
           </select>
         </label>
-        <p className="self-end text-xs text-muted-foreground pb-2">Saved on this device. Choose a role for coding, research, learning, business, or everyday questions.</p>
+        <div className="self-end pb-2 text-xs text-muted-foreground">
+          <p>{activeCustomAssistant ? "সক্রিয় সহকারী: " + activeCustomAssistant.name + " · আপনার কাস্টম নির্দেশনা পরের উত্তরে ব্যবহার হবে।" : "Saved on this device. Choose a role for coding, research, learning, business, or everyday questions."}</p>
+          <Link to="/assistant-builder" className="mt-1 inline-flex items-center gap-1 text-primary hover:underline">নিজের সহকারী তৈরি বা সম্পাদনা করুন →</Link>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">

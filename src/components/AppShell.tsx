@@ -17,6 +17,7 @@ const nav = [
   { to: "/approvals", label: "Approvals", icon: "✓" },
   { to: "/memory", label: "Memory", icon: "✎" },
   { to: "/prompt-studio", label: "Prompt Studio", icon: "✧" },
+  { to: "/assistant-builder", label: "My AI Assistant", icon: "◈" },
   { to: "/integrations", label: "Integrations", icon: "⇄" },
   { to: "/activity", label: "Activity", icon: "≡" },
   { to: "/notifications", label: "Alerts", icon: "◔" },
@@ -58,6 +59,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link to="/social-studio" activeProps={{ className: "text-primary" }}>Social</Link>
             <Link to="/social-automation" activeProps={{ className: "text-primary" }}>Auto</Link>
             <Link to="/prompt-studio" activeProps={{ className: "text-primary" }}>Prompts</Link>
+            <Link to="/assistant-builder" activeProps={{ className: "text-primary" }}>My assistant</Link>
             <Link to="/integrations" activeProps={{ className: "text-primary" }}>Integrations</Link>
             <Link to="/activity" activeProps={{ className: "text-primary" }}>Log</Link>
             <Link to="/notifications" activeProps={{ className: "text-primary" }}>Alerts</Link>
