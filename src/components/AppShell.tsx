@@ -10,6 +10,7 @@ const nav = [
   { to: "/coding-coach", label: "Coding Coach", icon: "⌘" },
   { to: "/cybersecurity-lab", label: "Cybersecurity Lab", icon: "⛨" },
   { to: "/pet-care", label: "Pet Care", icon: "♡" },
+  { to: "/social-studio", label: "Social Studio", icon: "↗" },
   { to: "/capture", label: "Quick Capture", icon: "+" },
   { to: "/focus", label: "Focus", icon: "◷" },
   { to: "/approvals", label: "Approvals", icon: "✓" },
@@ -53,6 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link to="/coding-coach" activeProps={{ className: "text-primary" }}>Coding</Link>
             <Link to="/cybersecurity-lab" activeProps={{ className: "text-primary" }}>Security</Link>
             <Link to="/pet-care" activeProps={{ className: "text-primary" }}>Pets</Link>
+            <Link to="/social-studio" activeProps={{ className: "text-primary" }}>Social</Link>
             <Link to="/prompt-studio" activeProps={{ className: "text-primary" }}>Prompts</Link>
             <Link to="/integrations" activeProps={{ className: "text-primary" }}>Integrations</Link>
             <Link to="/activity" activeProps={{ className: "text-primary" }}>Log</Link>
