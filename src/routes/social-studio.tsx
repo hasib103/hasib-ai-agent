@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState, type FormEvent } from "react";
-import { Activity, CalendarDays, CheckCircle2, Copy, Download, ExternalLink, Layers3, MessageSquareText, Plus, Send, ShieldCheck, Sparkles, Workflow } from "lucide-react";
+import { Activity, CalendarDays, Copy, Download, Layers3, MessageSquareText, Plus, ShieldCheck, Sparkles, Workflow } from "lucide-react";
 import { PageHeader } from "@/lib/store";
 import { askVoiceAssistant } from "@/lib/voice-chat.functions";
 import { supabase } from "@/lib/supabase";
