@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 const nav = [
   { to: "/", label: "Home", icon: "◉" },
   { to: "/tasks", label: "Tasks", icon: "☰" },
+  { to: "/math-solver", label: "Math Solver", icon: "∑" },
   { to: "/capture", label: "Quick Capture", icon: "+" },
   { to: "/focus", label: "Focus", icon: "◷" },
   { to: "/approvals", label: "Approvals", icon: "✓" },
@@ -45,6 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="font-display font-semibold">Hasib<span className="text-primary"> AI</span></span>
           <div className="mobile-header-links flex gap-2 text-xs text-muted-foreground">
             <Link to="/capture" activeProps={{ className: "text-primary" }}>Capture</Link>
+            <Link to="/math-solver" activeProps={{ className: "text-primary" }}>Math</Link>
             <Link to="/prompt-studio" activeProps={{ className: "text-primary" }}>Prompts</Link>
             <Link to="/integrations" activeProps={{ className: "text-primary" }}>Integrations</Link>
             <Link to="/activity" activeProps={{ className: "text-primary" }}>Log</Link>
