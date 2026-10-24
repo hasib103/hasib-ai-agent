@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 const nav = [
   { to: "/", label: "Home", icon: "◉" },
   { to: "/tasks", label: "Tasks", icon: "☰" },
+  { to: "/focus", label: "Focus", icon: "◷" },
   { to: "/approvals", label: "Approvals", icon: "✓" },
   { to: "/memory", label: "Memory", icon: "✎" },
   { to: "/prompt-studio", label: "Prompt Studio", icon: "✧" },
@@ -14,7 +15,7 @@ const nav = [
   { to: "/notifications", label: "Alerts", icon: "◔" },
   { to: "/settings", label: "Settings", icon: "⚙" },
 ] as const;
-const mobile = ["/", "/tasks", "/approvals", "/memory", "/settings"];
+const mobile = ["/", "/tasks", "/focus", "/approvals", "/settings"];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { s } = useStore();
