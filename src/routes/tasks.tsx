@@ -165,6 +165,37 @@ function Tasks() {
   const [runnerError, setRunnerError] = useState<string | null>(null);
   const list = s.tasks.filter((t) => f === "all" || t.status === f);
 
+  const refreshTaskHistory = async (id: string) => {
+    const [taskResult, historyResult] = await Promise.all([
+      supabase.from("tasks").select("status,result,updated_at").eq("id", id).maybeSingle(),
+      supabase.from("task_history").select("id,at,note").eq("task_id", id).order("at", { ascending: true }),
+    ]);
+    if (taskResult.error) console.error("Could not refresh task state:", taskResult.error.message);
+    if (historyResult.error) console.error("Could not refresh task history:", historyResult.error.message);
+    const persistedTask = taskResult.data;
+    const persistedHistory = historyResult.data;
+    if (!persistedTask && !persistedHistory?.length) return;
+
+    const validStatuses = ["queued", "running", "paused", "blocked", "done", "failed"] as const;
+    const persistedStatus = typeof persistedTask?.status === "string" &&
+      validStatuses.includes(persistedTask.status as (typeof validStatuses)[number])
+      ? persistedTask.status as TaskStatus
+      : undefined;
+
+    set((st) => ({
+      ...st,
+      tasks: st.tasks.map((item) => item.id !== id ? item : ({
+        ...item,
+        ...(persistedStatus ? { status: persistedStatus } : {}),
+        ...(persistedTask?.updated_at ? { updated: persistedTask.updated_at } : {}),
+        ...(persistedTask && "result" in persistedTask ? { result: persistedTask.result } : {}),
+        ...(persistedHistory?.length
+          ? { history: persistedHistory.map((entry) => ({ id: entry.id, at: entry.at, note: entry.note })) }
+          : {}),
+      })),
+    }));
+  };
+
   const runTask = async (id: string) => {
     setRunnerBusy(id);
     setRunnerError(null);
@@ -202,14 +233,10 @@ function Tasks() {
       }
       if (data?.status !== "done") throw new Error(data?.error || "Task did not complete successfully");
       setStatus(id, "done", "AI plan generated and saved; no external task was executed.", data.result);
+      await refreshTaskHistory(id);
     } catch (e) {
       setRunnerError(e instanceof Error ? e.message : "Task runner failed");
-      const { data } = await supabase.from("tasks").select("status").eq("id", id).maybeSingle();
-      const current = s.tasks.find((task) => task.id === id);
-      if (data?.status && current && data.status !== current.status &&
-          ["queued", "running", "done", "failed", "paused", "blocked"].includes(data.status)) {
-        setStatus(id, data.status as TaskStatus, "Status refreshed after task runner response");
-      }
+      await refreshTaskHistory(id);
     } finally {
       setRunnerBusy(null);
     }
