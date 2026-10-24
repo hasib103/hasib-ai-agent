@@ -74,7 +74,7 @@ function MathSolver() {
           message,
           history: [],
           language: "bn-BD",
-          profile: "study_tutor",
+          profile: "tutor",
           accessToken,
         },
       });
