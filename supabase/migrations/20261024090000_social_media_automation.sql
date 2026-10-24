@@ -72,3 +72,45 @@ create index if not exists social_post_metrics_user_time_idx on public.social_po
 alter table public.social_post_metrics enable row level security;
 create policy "Users can read their own social post metrics" on public.social_post_metrics for select to authenticated using ((select auth.uid()) = user_id);
 revoke insert, update, delete on public.social_post_metrics from anon, authenticated;
+
+-- A private random scheduler credential is stored in Supabase Vault; it is never returned to clients.
+create extension if not exists pg_cron with schema pg_catalog;
+create extension if not exists pg_net with schema extensions;
+
+create or replace function public.verify_social_scheduler_secret(p_candidate text)
+returns boolean
+language sql
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from vault.decrypted_secrets
+    where name = 'social_scheduler_secret' and decrypted_secret = p_candidate
+  );
+$$;
+revoke all on function public.verify_social_scheduler_secret(text) from public, anon, authenticated;
+grant execute on function public.verify_social_scheduler_secret(text) to service_role;
+
+do $$
+begin
+  if not exists (select 1 from vault.decrypted_secrets where name = 'social_scheduler_secret') then
+    perform vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'social_scheduler_secret', 'Internal credential for scheduled social publishing');
+  end if;
+end $$;
+
+select cron.schedule(
+  'social-publish-due-jobs',
+  '* * * * *',
+  $job$
+    select net.http_post(
+      url := 'https://qmdxpvimryxwezqmjbge.supabase.co/functions/v1/social-automation?action=run_due_jobs',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'x-social-scheduler-secret',
+        (select decrypted_secret from vault.decrypted_secrets where name = 'social_scheduler_secret' limit 1)
+      ),
+      body := '{}'::jsonb
+    )
+    where exists (select 1 from vault.decrypted_secrets where name = 'social_scheduler_secret');
+  $job$
+);
