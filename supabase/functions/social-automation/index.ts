@@ -44,6 +44,13 @@ async function decrypt(ciphertext: string, iv: string) {
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromBase64(iv) }, await encryptionKey(), fromBase64(ciphertext));
   return new TextDecoder().decode(plain);
 }
+function providerSecretNames(provider: Provider) {
+  const prefix = ["facebook", "instagram", "whatsapp"].includes(provider) ? "META" : provider === "youtube" ? "GOOGLE" : provider.toUpperCase();
+  const canonical = ["SOCIAL_" + prefix + "_CLIENT_ID", "SOCIAL_" + prefix + "_CLIENT_SECRET"];
+  const fallback = ["SOCIAL_" + provider.toUpperCase() + "_CLIENT_ID", "SOCIAL_" + provider.toUpperCase() + "_CLIENT_SECRET"];
+  const names = canonical.every((name) => env(name)) ? canonical : fallback;
+  return { names: canonical, configured: names.every((name) => !!env(name)) };
+}
 function credentials(provider: Provider) {
   const prefix = ["facebook", "instagram", "whatsapp"].includes(provider) ? "META" : provider === "youtube" ? "GOOGLE" : provider.toUpperCase();
   const clientId = env("SOCIAL_" + prefix + "_CLIENT_ID") || env("SOCIAL_" + provider.toUpperCase() + "_CLIENT_ID");
@@ -441,6 +448,9 @@ Deno.serve(async (req) => {
     const user = await authenticate(req);
     if (req.method !== "POST") return json(req, { error: "Use POST for this action." }, 405);
     const body = await req.json().catch(() => ({}));
+    if (action === "provider_status") {
+      return json(req, { providers: PROVIDERS.map((p) => ({ provider: p, ...providerSecretNames(p), publishing_supported: ["facebook","instagram","youtube","tiktok","linkedin","x","pinterest","threads"].includes(p) })) });
+    }
     if (action === "connect") {
       if (!PROVIDERS.includes(body.provider)) return json(req, { error: "Unsupported provider." }, 400);
       const p = body.provider as Provider;
