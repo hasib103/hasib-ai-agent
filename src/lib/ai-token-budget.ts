@@ -27,7 +27,7 @@ export class AiTokenBudgetExceededError extends Error {
       ? seconds + " seconds"
       : seconds < 3600
         ? Math.ceil(seconds / 60) + " minutes"
-        : Math.ceil(seconds / 3600) + " hours";
+        : Math.ceil(seconds / 3600) + (Math.ceil(seconds / 3600) === 1 ? " hour" : " hours");
     super("Daily AI token budget reached. Please try again in " + wait + ".");
     this.name = "AiTokenBudgetExceededError";
     this.retryAfterSeconds = seconds;

@@ -55,7 +55,7 @@ describe("AI token budget", () => {
       retry_after_seconds: 3600,
     }]);
     await expect(reserveAiTokenBudgetWithRpc(rpc, "planner", 5000)).rejects.toBeInstanceOf(AiTokenBudgetExceededError);
-    await expect(reserveAiTokenBudgetWithRpc(rpc, "planner", 5000)).rejects.toThrow("1 hours");
+    await expect(reserveAiTokenBudgetWithRpc(rpc, "planner", 5000)).rejects.toThrow("1 hour");
   });
 
   it("fails closed when reservation accounting is unavailable", async () => {
