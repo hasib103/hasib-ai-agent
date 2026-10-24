@@ -6,6 +6,9 @@ import { supabase } from "@/lib/supabase";
 const nav = [
   { to: "/", label: "Home", icon: "◉" },
   { to: "/tasks", label: "Tasks", icon: "☰" },
+  { to: "/math-solver", label: "Math Solver", icon: "∑" },
+  { to: "/capture", label: "Quick Capture", icon: "+" },
+  { to: "/focus", label: "Focus", icon: "◷" },
   { to: "/approvals", label: "Approvals", icon: "✓" },
   { to: "/memory", label: "Memory", icon: "✎" },
   { to: "/prompt-studio", label: "Prompt Studio", icon: "✧" },
@@ -14,7 +17,7 @@ const nav = [
   { to: "/notifications", label: "Alerts", icon: "◔" },
   { to: "/settings", label: "Settings", icon: "⚙" },
 ] as const;
-const mobile = ["/", "/tasks", "/approvals", "/memory", "/settings"];
+const mobile = ["/", "/tasks", "/focus", "/approvals", "/settings"];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { s } = useStore();
@@ -42,6 +45,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="mobile-header md:hidden flex items-center justify-between border-b px-3 py-2.5 sticky safe-area-top bg-background/90 backdrop-blur z-30">
           <span className="font-display font-semibold">Hasib<span className="text-primary"> AI</span></span>
           <div className="mobile-header-links flex gap-2 text-xs text-muted-foreground">
+            <Link to="/capture" activeProps={{ className: "text-primary" }}>Capture</Link>
+            <Link to="/math-solver" activeProps={{ className: "text-primary" }}>Math</Link>
             <Link to="/prompt-studio" activeProps={{ className: "text-primary" }}>Prompts</Link>
             <Link to="/integrations" activeProps={{ className: "text-primary" }}>Integrations</Link>
             <Link to="/activity" activeProps={{ className: "text-primary" }}>Log</Link>
