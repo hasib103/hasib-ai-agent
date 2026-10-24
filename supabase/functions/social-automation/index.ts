@@ -491,6 +491,18 @@ Deno.serve(async (req) => {
         const d = await fetch("https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&id=" + encodeURIComponent(conn.external_account_id), { headers: { Authorization: "Bearer " + token } }).then((r) => r.json());
         if (d.error) throw new Error("YouTube channel metrics unavailable.");
         metrics = { source: "youtube_channel_statistics", data: d.items || [] };
+      } else if (conn.provider === "tiktok") {
+        const d = await fetch("https://open.tiktokapis.com/v2/video/list/?fields=id,title,create_time,view_count,like_count,comment_count,share_count", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ max_count: 20 }) }).then((r) => r.json());
+        if (d.error?.code && d.error.code !== "ok") throw new Error("TikTok metrics unavailable; check video.list scope and app review.");
+        metrics = { source: "tiktok_recent_videos", data: d.data?.videos || [] };
+      } else if (conn.provider === "pinterest") {
+        const end = new Date(); const start = new Date(Date.now() - 29 * 86400000);
+        const date = (d: Date) => d.toISOString().slice(0, 10);
+        const query = new URLSearchParams({ start_date: date(start), end_date: date(end), metric_types: "IMPRESSION,SAVE,PIN_CLICK,OUTBOUND_CLICK" });
+        const r = await fetch("https://api.pinterest.com/v5/user_account/analytics?" + query.toString(), { headers: { Authorization: "Bearer " + token } });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.code) throw new Error("Pinterest analytics unavailable; check account analytics permissions.");
+        metrics = { source: "pinterest_account_analytics_30d", data: d };
       } else {
         throw new Error("Metrics API adapter is not yet enabled for " + conn.provider + ".");
       }
