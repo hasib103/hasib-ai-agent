@@ -200,7 +200,7 @@ function AssistantBuilder() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = "hasib-assistant-" + assistant.name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") + ".json";
+      anchor.download = "hasib-assistant-" + assistant.id.slice(0, 40).replace(/[^a-zA-Z0-9-]/g, "-") + ".json";
       anchor.click();
       URL.revokeObjectURL(url);
       setNotice("সহকারীর সেটিংস JSON ফাইল হিসেবে রপ্তানি করা হয়েছে।");
