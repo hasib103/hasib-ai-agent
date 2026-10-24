@@ -4,14 +4,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 type Provider = "facebook" | "instagram" | "youtube" | "tiktok" | "linkedin" | "x" | "pinterest" | "threads" | "whatsapp";
 const PROVIDERS: Provider[] = ["facebook", "instagram", "youtube", "tiktok", "linkedin", "x", "pinterest", "threads", "whatsapp"];
 const env = (key: string) => Deno.env.get(key) ?? "";
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "Access-Control-Allow-Origin": "https://hasib-ai-agent.onrender.com", "Access-Control-Allow-Headers": "authorization, apikey, x-client-info, content-type", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Vary": "Origin" } });
 const redirect = (url: string) => Response.redirect(url, 302);
 const supabaseUrl = env("SUPABASE_URL");
 const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY");
 const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 const appUrl = () => (env("APP_URL") || "https://hasib-ai-agent.onrender.com").replace(/\/$/, "");
 const callbackUrl = (provider: Provider) => supabaseUrl + "/functions/v1/social-automation?action=oauth_callback&provider=" + provider;
-const allowedOrigins = new Set([appUrl(), "http://localhost:3000", "http://localhost:5173"]);
+const allowedOrigins = new Set([appUrl(), "https://hasib-ai-agent-test.onrender.com", "http://localhost:3000", "http://localhost:5173"]);
 const cors = (req: Request) => ({
   "Access-Control-Allow-Origin": allowedOrigins.has(req.headers.get("origin") || "") ? (req.headers.get("origin") || appUrl()) : appUrl(),
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -38,9 +38,9 @@ async function decrypt(ciphertext: string, iv: string) {
   return new TextDecoder().decode(plain);
 }
 function credentials(provider: Provider) {
-  const prefix = provider === "x" ? "X" : provider.toUpperCase();
-  const clientId = env("SOCIAL_" + prefix + "_CLIENT_ID");
-  const clientSecret = env("SOCIAL_" + prefix + "_CLIENT_SECRET");
+  const prefix = ["facebook", "instagram", "whatsapp"].includes(provider) ? "META" : provider === "youtube" ? "GOOGLE" : provider.toUpperCase();
+  const clientId = env("SOCIAL_" + prefix + "_CLIENT_ID") || env("SOCIAL_" + provider.toUpperCase() + "_CLIENT_ID");
+  const clientSecret = env("SOCIAL_" + prefix + "_CLIENT_SECRET") || env("SOCIAL_" + provider.toUpperCase() + "_CLIENT_SECRET");
   if (!clientId || !clientSecret) throw new Error("Provider is not configured yet. Add SOCIAL_" + prefix + "_CLIENT_ID and SOCIAL_" + prefix + "_CLIENT_SECRET in Supabase Edge Function secrets.");
   return { clientId, clientSecret };
 }
@@ -49,7 +49,7 @@ function oauthConfig(provider: Provider, state: string, challenge?: string) {
   const redirectUri = callbackUrl(provider);
   const scopes: Record<Provider, string[]> = {
     facebook: ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "read_insights", "instagram_basic", "instagram_content_publish", "business_management", "whatsapp_business_management", "whatsapp_business_messaging"],
-    instagram: ["threads_basic"],
+    instagram: ["instagram_basic", "instagram_content_publish", "pages_show_list", "pages_read_engagement"],
     youtube: ["openid", "profile", "email", "https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"],
     tiktok: ["user.info.basic", "video.publish", "video.upload"],
     linkedin: ["openid", "profile", "w_member_social"],
