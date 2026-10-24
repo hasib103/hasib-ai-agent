@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { enforceAiRequestQuota } from "@/lib/ai-request-quota";
+import { estimateReservedAiTokens, reserveAiTokenBudget, settleAiTokenBudget } from "@/lib/ai-token-budget";
 
 const planSchema = z.object({
   summary: z.string().describe("One-sentence summary of the plan"),
@@ -88,6 +89,12 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
         thinkingConfig: { thinkingLevel: "low" },
       },
     });
+
+    const tokenReservation = await reserveAiTokenBudget(
+      data.accessToken,
+      "planner",
+      estimateReservedAiTokens(requestBody.length, 1800),
+    );
 
     // Gemini may return HTTP 503 during temporary overload. Retry transient
     // upstream responses a bounded number of times with exponential backoff.
@@ -191,7 +198,19 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
     const payload = (await response.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
       promptFeedback?: { blockReason?: string };
+      usageMetadata?: { totalTokenCount?: number };
     };
+    const reportedTokenCount = payload.usageMetadata?.totalTokenCount;
+    const actualTokens = typeof reportedTokenCount === "number" &&
+      Number.isSafeInteger(reportedTokenCount) && reportedTokenCount >= 0
+      ? reportedTokenCount
+      : tokenReservation.reservedTokens;
+    try {
+      await settleAiTokenBudget(data.accessToken, tokenReservation.reservationId, actualTokens);
+    } catch (settlementError) {
+      // The still-reserved amount remains charged for the rolling window if settlement fails.
+      console.error("AI token budget settlement failed; conservative reservation retained", settlementError);
+    }
     const text = payload.candidates?.[0]?.content?.parts
       ?.map((part) => part.text ?? "")
       .join("")

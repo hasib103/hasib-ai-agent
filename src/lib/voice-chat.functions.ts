@@ -4,6 +4,7 @@ import { VOICE_LANGUAGES, VOICE_LANGUAGE_CODES, type VoiceLanguageCode } from "@
 import { supabase } from "@/lib/supabase";
 import { normalizeAssistantAnswer } from "@/lib/plain-text-answer";
 import { enforceAiRequestQuota } from "@/lib/ai-request-quota";
+import { estimateReservedAiTokens, reserveAiTokenBudget, settleAiTokenBudget } from "@/lib/ai-token-budget";
 import { AGENT_PROFILE_IDS, getAgentProfileInstruction, type AgentProfileId } from "@/lib/agent-profiles";
 
 const messageSchema = z.object({
@@ -54,6 +55,7 @@ type GeminiPayload = {
     groundingMetadata?: { groundingChunks?: GroundingChunk[] };
   }>;
   promptFeedback?: { blockReason?: string };
+  usageMetadata?: { totalTokenCount?: number };
 };
 
 function appendVerifiedSources(answer: string, chunks: GroundingChunk[] | undefined): string {
@@ -108,6 +110,12 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
         thinkingConfig: { thinkingLevel: "low" },
       },
     });
+
+    const tokenReservation = await reserveAiTokenBudget(
+      data.accessToken,
+      "chat",
+      estimateReservedAiTokens(requestBody.length, 1400),
+    );
 
     // Keep a strict overall budget so transient provider failures do not make the
     // user wait through several long sequential attempts.
@@ -175,6 +183,17 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
     }
 
     const payload = await response.json() as GeminiPayload;
+    const reportedTokenCount = payload.usageMetadata?.totalTokenCount;
+    const actualTokens = typeof reportedTokenCount === "number" &&
+      Number.isSafeInteger(reportedTokenCount) && reportedTokenCount >= 0
+      ? reportedTokenCount
+      : tokenReservation.reservedTokens;
+    try {
+      await settleAiTokenBudget(data.accessToken, tokenReservation.reservationId, actualTokens);
+    } catch (settlementError) {
+      // The still-reserved amount remains charged for the rolling window if settlement fails.
+      console.error("AI token budget settlement failed; conservative reservation retained", settlementError);
+    }
     const rawAnswer = payload.candidates?.[0]?.content?.parts
       ?.map((part) => part.text ?? "")
       .join("")
