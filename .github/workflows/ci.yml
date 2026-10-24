@@ -24,6 +24,14 @@ jobs:
         run: bun run build
       - name: Run tests
         run: bun run test
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check Task Runner Edge Function
+        run: deno check supabase/functions/task-runner/index.ts
+
       - name: Verify Task Runner CORS allowlist
         shell: bash
         run: |
