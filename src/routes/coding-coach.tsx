@@ -125,10 +125,10 @@ function CodingCoach() {
     } finally { setBusy(false); }
   }
 
-  async function generateLesson(nextLesson = false) {
+  async function generateLesson() {
     if (!course || busy) return;
     setBusy(true); setError(""); setAnswer(""); setNotice("");
-    const lessonNumber = course.completedLessons + 1 + (nextLesson ? 1 : 0);
+    const lessonNumber = course.completedLessons + 1;
     try {
       const prompt = [
         "You are Coding Coach, a friendly expert tutor. Teach exactly one small, practical lesson in Bengali.",
@@ -250,7 +250,6 @@ function CodingCoach() {
           {course ? <div className="rounded-md bg-secondary/60 p-3 text-sm">বর্তমান কোর্স: {course.language} · সম্পন্ন পাঠ: {course.completedLessons}</div> : <p className="text-sm text-muted-foreground">প্রথমে পরিকল্পনা ট্যাবে আপনার শেখার পরিকল্পনা তৈরি করুন। চাইলে তবুও নিচের বোতামে একটি পরিচিতিমূলক পাঠের অনুরোধ করতে পারেন।</p>}
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void generateLesson(false)}>{busy ? <LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" /> : <PlayCircle className="mr-2 inline h-4 w-4" />} {course ? "বর্তমান পরের পাঠ তৈরি করো" : "পরিচিতিমূলক পাঠ তৈরি করো"}</button>
-            {answer && course && <button type="button" className="btn btn-ghost" onClick={completeLesson}><CheckCircle2 className="mr-1 inline h-4 w-4" />পাঠ সম্পন্ন</button>}
           </div>
         </section>
       )}
@@ -259,8 +258,8 @@ function CodingCoach() {
         <form className="card-surface space-y-4 p-4 sm:p-5" onSubmit={getHelp}>
           <h2 className="font-semibold">যেকোনো কোডিং প্রশ্নে সাহায্য নিন</h2>
           <p className="text-sm text-muted-foreground">কোনো বিষয় বুঝতে অসুবিধা, error, কোডের সমস্যা, প্রজেক্টের পরিকল্পনা বা পরের ধাপ—সবই সহজ ভাষায় জিজ্ঞেস করুন।</p>
-          <div><label htmlFor="coding-question" className="mb-1.5 block text-sm font-medium">আপনার প্রশ্ন</label><textarea id="coding-question" className="field min-h-24" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1800} required placeholder="যেমন: for loop কী? সহজ উদাহরণ দিয়ে বোঝাও।" /></div>
-          <div><label htmlFor="coding-code" className="mb-1.5 block text-sm font-medium">কোড বা error (ঐচ্ছিক)</label><textarea id="coding-code" className="field min-h-28 font-mono text-sm" value={code} onChange={(event) => setCode(event.target.value)} maxLength={1800} placeholder="আপনার কোড বা error এখানে দিন…" /></div>
+          <div><label htmlFor="coding-question" className="mb-1.5 block text-sm font-medium">আপনার প্রশ্ন</label><textarea id="coding-question" className="field min-h-24" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} required placeholder="যেমন: for loop কী? সহজ উদাহরণ দিয়ে বোঝাও।" /></div>
+          <div><label htmlFor="coding-code" className="mb-1.5 block text-sm font-medium">কোড বা error (ঐচ্ছিক)</label><textarea id="coding-code" className="field min-h-28 font-mono text-sm" value={code} onChange={(event) => setCode(event.target.value)} maxLength={1200} placeholder="আপনার কোড বা error এখানে দিন…" /></div>
           <button type="submit" className="btn btn-primary" disabled={busy || !question.trim()}><Sparkles className="mr-2 inline h-4 w-4" />{busy ? "সহায়তা তৈরি হচ্ছে…" : "সহজভাবে বুঝিয়ে দাও"}</button>
         </form>
       )}
