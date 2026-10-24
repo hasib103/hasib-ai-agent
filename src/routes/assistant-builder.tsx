@@ -1,7 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { ArrowRight, Download, Pencil, Save, Sparkles, Trash2, UserRoundCog } from "lucide-react";
 import { PageHeader } from "@/lib/store";
+import { askVoiceAssistant } from "@/lib/voice-chat.functions";
+import { supabase } from "@/lib/supabase";
 import {
   ACTIVE_CUSTOM_ASSISTANT_KEY,
   ASSISTANT_CATEGORIES,
@@ -80,9 +83,12 @@ const presets: Array<{ category: AssistantCategory; title: string; goal: string;
 
 function AssistantBuilder() {
   const navigate = useNavigate({ from: "/assistant-builder" });
+  const runAssistant = useServerFn(askVoiceAssistant);
   const [assistants, setAssistants] = useState<CustomAssistant[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [draft, setDraft] = useState<Draft>(blankDraft);
+  const [needCommand, setNeedCommand] = useState("");
+  const [designing, setDesigning] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -116,6 +122,68 @@ function AssistantBuilder() {
     }));
     setNotice("নমুনা নির্দেশনা যোগ হয়েছে। নিজের প্রয়োজনমতো বদলে সংরক্ষণ করুন।");
     setError("");
+  }
+
+  async function designWithAI() {
+    const request = needCommand.trim();
+    if (!request || designing) return;
+    setDesigning(true);
+    setError("");
+    setNotice("");
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (sessionError || !accessToken) {
+        throw new Error("এই সুবিধা ব্যবহার করতে অ্যাকাউন্টে আবার সাইন ইন করুন।");
+      }
+      const answer = await runAssistant({
+        data: {
+          message:
+            "Create a draft custom assistant profile for Hasib AI Agent based on the user's need below. Return valid JSON only, with no Markdown fences or commentary. Include exactly these string fields: name, category, goal, instructions, tone, responseFormat, boundaries. category must be one of Study, Business, Coding, Research, Writing, Personal, Other. Respect these limits: name 60 chars, goal 500, instructions 3000, tone 120, responseFormat 300, boundaries 1200. Use Bengali unless another language is clearly requested. Do not add external account access, tools, permissions, or promises of autonomous external actions. These are user-level task/style preferences only, and the user will review the draft before saving. If details are missing, make conservative useful assumptions without inventing personal facts.\n\nUser need:\n" +
+            request,
+          history: [],
+          language: "bn-BD",
+          profile: "general",
+          customInstructions: "",
+          accessToken,
+        },
+      });
+      const start = answer.indexOf("{");
+      const end = answer.lastIndexOf("}");
+      if (start < 0 || end <= start) {
+        throw new Error("AI থেকে কাঠামোবদ্ধ খসড়া পাওয়া যায়নি। প্রয়োজনটি আরেকটু নির্দিষ্ট করে চেষ্টা করুন।");
+      }
+      const decoded: unknown = JSON.parse(answer.slice(start, end + 1));
+      if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+        throw new Error("AI-এর খসড়ার ধরন সঠিক নয়। আবার চেষ্টা করুন।");
+      }
+      const row = decoded as Record<string, unknown>;
+      const read = (key: string, limit: number, fallback = ""): string =>
+        typeof row[key] === "string" ? (row[key] as string).trim().slice(0, limit) : fallback;
+      const category = ASSISTANT_CATEGORIES.includes(row.category as AssistantCategory)
+        ? row.category as AssistantCategory
+        : "Personal";
+      const nextDraft: Draft = {
+        name: read("name", 60),
+        category,
+        goal: read("goal", 500),
+        instructions: read("instructions", 3000),
+        tone: read("tone", 120, blankDraft.tone),
+        responseFormat: read("responseFormat", 300, blankDraft.responseFormat),
+        boundaries: read("boundaries", 1200, blankDraft.boundaries),
+      };
+      if (!nextDraft.name || !nextDraft.goal || !nextDraft.instructions) {
+        throw new Error("AI-এর খসড়ায় প্রয়োজনীয় তথ্য অসম্পূর্ণ। প্রয়োজনটি আরেকটু স্পষ্ট করে চেষ্টা করুন।");
+      }
+      setDraft(nextDraft);
+      setEditingId(null);
+      setNotice("AI আপনার বর্ণনা থেকে একটি খসড়া তৈরি করেছে। নিচের সব নির্দেশনা যাচাই ও প্রয়োজনমতো সম্পাদনা করে তবেই সংরক্ষণ করুন।");
+      document.getElementById("assistant-builder-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "সহকারীর খসড়া তৈরি করা যায়নি। আবার চেষ্টা করুন।");
+    } finally {
+      setDesigning(false);
+    }
   }
 
   function resetForm() {
@@ -276,6 +344,25 @@ function AssistantBuilder() {
               <Sparkles className="mr-1.5 inline h-4 w-4" aria-hidden="true" />{preset.title}
             </button>
           ))}
+        </div>
+        <div className="mt-5 space-y-3 border-t pt-4">
+          <h3 className="font-semibold">শুধু আপনার প্রয়োজনটি লিখুন</h3>
+          <p className="text-sm text-muted-foreground">নিজের ভাষায় বলুন কী কাজ করাতে চান। AI নাম, লক্ষ্য ও নির্দেশনার একটি খসড়া সাজিয়ে দেবে—সেটি যাচাই করে তারপর সংরক্ষণ করবেন।</p>
+          <textarea
+            className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            value={needCommand}
+            onChange={(event) => setNeedCommand(event.target.value)}
+            maxLength={1500}
+            placeholder="যেমন: আমি অনলাইনে পোশাক বিক্রি করি। গ্রাহকের প্রশ্নের উত্তর, পণ্যের বর্ণনা, বিক্রির পোস্ট এবং সাপ্তাহিক কনটেন্ট পরিকল্পনায় আমাকে সাহায্য করো।"
+            aria-label="আপনার প্রয়োজনের বর্ণনা"
+            disabled={designing}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn btn-primary" onClick={() => void designWithAI()} disabled={designing || !needCommand.trim()}>
+              <Sparkles className="mr-1.5 inline h-4 w-4" aria-hidden="true" />{designing ? "খসড়া তৈরি হচ্ছে…" : "AI দিয়ে সহকারী সাজান"}
+            </button>
+            <span className="text-xs text-muted-foreground">AI ব্যবহারে স্বাভাবিক অ্যাকাউন্ট কোটা প্রযোজ্য। খসড়া স্বয়ংক্রিয়ভাবে সংরক্ষণ বা সক্রিয় হবে না।</span>
+          </div>
         </div>
       </section>
 
