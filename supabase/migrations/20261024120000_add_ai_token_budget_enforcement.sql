@@ -12,7 +12,7 @@ create table if not exists public.ai_token_budget_events (
   constraint ai_token_budget_events_state_check check (
     (status = 'reserved' and actual_tokens is null and settled_at is null)
     or
-    (status = 'settled' and actual_tokens between 0 and 300000 and settled_at is not null)
+    (status = 'settled' and actual_tokens is not null and actual_tokens between 0 and 300000 and settled_at is not null)
   )
 );
 
