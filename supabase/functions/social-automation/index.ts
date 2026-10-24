@@ -48,7 +48,7 @@ function oauthConfig(provider: Provider, state: string, challenge?: string) {
   const { clientId } = credentials(provider);
   const redirectUri = callbackUrl(provider);
   const scopes: Record<Provider, string[]> = {
-    facebook: ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "read_insights", "instagram_basic", "instagram_content_publish", "business_management", "whatsapp_business_management", "whatsapp_business_messaging"],
+    facebook: ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "read_insights"],
     instagram: ["instagram_basic", "instagram_content_publish", "pages_show_list", "pages_read_engagement"],
     youtube: ["openid", "profile", "email", "https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"],
     tiktok: ["user.info.basic", "video.list", "video.publish", "video.upload"],
