@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { ArrowRight, Download, Pencil, Save, Sparkles, Trash2, UserRoundCog } from "lucide-react";
 import { PageHeader } from "@/lib/store";
 import {
@@ -7,6 +7,7 @@ import {
   ASSISTANT_CATEGORIES,
   MAX_CUSTOM_ASSISTANTS,
   loadCustomAssistants,
+  parseCustomAssistants,
   saveCustomAssistants,
   type AssistantCategory,
   type CustomAssistant,
@@ -85,6 +86,7 @@ function AssistantBuilder() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setAssistants(loadCustomAssistants());
@@ -169,6 +171,49 @@ function AssistantBuilder() {
     setError("");
     setNotice("এখন সহকারীর সেটিংস সম্পাদনা করছেন।");
     document.getElementById("assistant-builder-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function importAssistants(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    if (file.size > 1_000_000) {
+      setError("JSON ফাইলটি ১ এমবির চেয়ে ছোট হতে হবে।");
+      return;
+    }
+    let imported: CustomAssistant[];
+    try {
+      const decoded: unknown = JSON.parse(await file.text());
+      imported = parseCustomAssistants(Array.isArray(decoded) ? decoded : [decoded]);
+    } catch {
+      setError("এই ফাইলটি পড়া যাচ্ছে না। Hasib AI Assistant-এর রপ্তানি করা JSON ফাইল নির্বাচন করুন।");
+      return;
+    }
+    if (imported.length === 0) {
+      setError("ফাইলে বৈধ সহকারী-প্রোফাইল পাওয়া যায়নি।");
+      return;
+    }
+    const available = MAX_CUSTOM_ASSISTANTS - assistants.length;
+    if (available <= 0) {
+      setError("সর্বোচ্চ ১২টি সহকারী রাখা যাবে। আমদানির আগে একটি মুছে দিন।");
+      return;
+    }
+    const now = new Date().toISOString();
+    const existingIds = new Set(assistants.map((item) => item.id));
+    const toAdd = imported.slice(0, available).map((item) => {
+      let id = item.id;
+      if (existingIds.has(id)) {
+        id = typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : "assistant-import-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+      }
+      existingIds.add(id);
+      return { ...item, id, createdAt: now, updatedAt: now };
+    });
+    setAssistants((current) => [...current, ...toAdd].slice(0, MAX_CUSTOM_ASSISTANTS));
+    setError("");
+    setNotice(toAdd.length + "টি সহকারী আমদানি করা হয়েছে।" + (toAdd.length < imported.length ? " সর্বোচ্চ সীমার কারণে কিছু প্রোফাইল বাদ গেছে।" : ""));
   }
 
   function activateAssistant(assistant: CustomAssistant) {
@@ -282,10 +327,14 @@ function AssistantBuilder() {
 
       {notice && <div className="mb-4 rounded-md border border-input p-3 text-sm" role="status" aria-live="polite">{notice}</div>}
 
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold">আপনার সহকারীরা</h2>
           <p className="text-sm text-muted-foreground">{assistants.length} / {MAX_CUSTOM_ASSISTANTS}টি সংরক্ষিত</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={(event) => void importAssistants(event)} aria-label="JSON ফাইল থেকে সহকারী আমদানি" />
+          <button type="button" className="btn btn-ghost border" onClick={() => importInputRef.current?.click()}>JSON আমদানি</button>
         </div>
       </div>
 
