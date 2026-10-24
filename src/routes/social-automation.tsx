@@ -143,7 +143,7 @@ function SocialAutomation() {
           const connected = accounts.filter((a) => a.provider === p.id);
           return <article key={p.id} className="rounded-lg border p-3">
             <div className="flex items-start justify-between gap-2"><div><h3 className="font-medium">{p.name}</h3><p className="mt-1 text-xs text-muted-foreground">{p.note}</p></div><span className={"shrink-0 rounded-full px-2 py-1 text-[10px] " + (connected.length ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground")}>{connected.length ? connected.length + " সংযুক্ত" : "সংযুক্ত নয়"}</span></div>
-            <button type="button" className="btn mt-3 w-full" disabled={!!busy || loading} onClick={() => void connect(p.id)}>{busy === "connect:" + p.id ? <LoaderCircle className="mr-1 inline h-4 w-4 animate-spin" /> : <Link2 className="mr-1 inline h-4 w-4" />}OAuth দিয়ে সংযোগ</button>
+            <button type="button" className="btn mt-3 w-full" disabled={!!busy || loading || p.id === "whatsapp"} onClick={() => void connect(p.id)}>{p.id === "whatsapp" ? "WABA সেটআপ প্রয়োজন" : busy === "connect:" + p.id ? <LoaderCircle className="mr-1 inline h-4 w-4 animate-spin" /> : <Link2 className="mr-1 inline h-4 w-4" />}{p.id === "whatsapp" ? "" : "OAuth দিয়ে সংযোগ"}</button>
           </article>;
         })}
       </div>
