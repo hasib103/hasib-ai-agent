@@ -21,12 +21,19 @@ const cors = (req: Request) => ({
 async function sha256(value: string) { const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)); return [...new Uint8Array(digest)].map((v) => v.toString(16).padStart(2, "0")).join(""); }
 function base64(bytes: Uint8Array) { let s = ""; bytes.forEach((b) => s += String.fromCharCode(b)); return btoa(s); }
 function fromBase64(s: string) { return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); }
+let cachedEncryptionKey: CryptoKey | null = null;
 async function encryptionKey() {
-  const raw = env("SOCIAL_TOKEN_ENCRYPTION_KEY");
-  if (!raw) throw new Error("Social OAuth is not configured: set SOCIAL_TOKEN_ENCRYPTION_KEY on Supabase Edge Functions.");
+  if (cachedEncryptionKey) return cachedEncryptionKey;
+  let raw = env("SOCIAL_TOKEN_ENCRYPTION_KEY");
+  if (!raw) {
+    const { data, error } = await admin.rpc("get_social_token_encryption_key");
+    if (error || typeof data !== "string" || !data) throw new Error("Social token encryption key is unavailable in Supabase Vault.");
+    raw = data;
+  }
   const bytes = fromBase64(raw);
-  if (bytes.length !== 32) throw new Error("SOCIAL_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
-  return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+  if (bytes.length !== 32) throw new Error("Social token encryption key must be a base64-encoded 32-byte key.");
+  cachedEncryptionKey = await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+  return cachedEncryptionKey;
 }
 async function encrypt(value: string) {
   const iv = crypto.getRandomValues(new Uint8Array(12));

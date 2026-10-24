@@ -7,7 +7,7 @@ The Social Automation page uses the Supabase Edge Function `social-automation`. 
 1. Apply `supabase/migrations/20261024090000_social_media_automation.sql` to project `qmdxpvimryxwezqmjbge`. This creates owner-scoped publish jobs, encrypted-token storage, a private scheduler credential in Vault, and a one-minute Supabase Cron job.
 2. Deploy `supabase/functions/social-automation/index.ts` with JWT verification disabled for the OAuth callback. The handler validates a one-time, expiring OAuth state for callbacks and validates the user's Supabase access token for user actions.
 3. Add these Edge Function secrets in Supabase Dashboard → Edge Functions → Secrets:
-   - `SOCIAL_TOKEN_ENCRYPTION_KEY`: base64-encoded 32-byte random key (generate with `openssl rand -base64 32`). Keep this stable; rotating it requires re-encrypting all stored tokens first.
+   - The migration creates `social_token_encryption_key` in Supabase Vault automatically. The Edge Function reads it through a service-role-only database function. Do not rotate or delete it without re-encrypting all stored tokens first. An optional `SOCIAL_TOKEN_ENCRYPTION_KEY` Edge Function secret can override Vault for managed key rotation.
    - `APP_URL=https://hasib-ai-agent.onrender.com`
    - Add each provider's client ID and secret only when its developer app is ready:
      - Meta (Facebook Pages, Instagram, WhatsApp): `SOCIAL_META_CLIENT_ID`, `SOCIAL_META_CLIENT_SECRET`
