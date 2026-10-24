@@ -117,7 +117,7 @@ function CodingCoach() {
       const plan = await askAI(prompt);
       const next: Course = { language, level, goal: goal.trim(), minutes, plan, completedLessons: 0, createdAt: Date.now() };
       setCourse(next);
-      setMode("learn");
+      setMode("plan");
       setAnswer("");
       setNotice("আপনার শেখার পরিকল্পনা তৈরি ও এই ব্রাউজারে সংরক্ষণ করা হয়েছে।");
     } catch (cause) {
