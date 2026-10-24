@@ -204,6 +204,26 @@ async function authenticate(req: Request) {
   if (error || !data.user) throw new Error("Your session expired. Sign in again.");
   return data.user;
 }
+async function readLimitedBody(response: Response, limitBytes: number): Promise<Uint8Array> {
+  if (!response.body) throw new Error("Media source returned an empty body.");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limitBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error("Media is over the 50 MB upload safety limit for this workflow.");
+    }
+    chunks.push(value);
+  }
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { combined.set(chunk, offset); offset += chunk.byteLength; }
+  return combined;
+}
 function safePublicHttpsUrl(value: string): boolean {
   try {
     const u = new URL(value);
@@ -319,8 +339,7 @@ async function publishJob(userId: string, jobId: string) {
       if (!source.ok) throw new Error("YouTube could not fetch the video source URL.");
       const length = Number(source.headers.get("content-length") || 0);
       if (length > 50 * 1024 * 1024) throw new Error("Video is over the 50 MB upload safety limit for this workflow.");
-      const media = await source.arrayBuffer();
-      if (media.byteLength > 50 * 1024 * 1024) throw new Error("Video is over the 50 MB upload safety limit for this workflow.");
+      const media = await readLimitedBody(source, 50 * 1024 * 1024);
       const boundary = "hasib_social_" + crypto.randomUUID().replaceAll("-", "");
       const metadata = { snippet: { title: String(content.title || content.text || "Hasib AI Agent video").slice(0, 100), description: String(content.text || "").slice(0, 5000) }, status: { privacyStatus: content.privacy_status === "public" ? "public" : "private" } };
       const body = new Blob(["--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n", JSON.stringify(metadata), "\r\n--" + boundary + "\r\nContent-Type: video/*\r\n\r\n", media, "\r\n--" + boundary + "--"]);
