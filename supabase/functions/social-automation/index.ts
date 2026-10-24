@@ -137,9 +137,14 @@ async function providerAccounts(provider: Provider, accessToken: string) {
       if (provider !== "facebook" && p.instagram_business_account?.id && p.access_token) out.push({ id: String(p.instagram_business_account.id), name: String(p.instagram_business_account.username || "Instagram account"), token: String(p.access_token), platform: "instagram", metadata: { instagram_user_id: String(p.instagram_business_account.id), page_id: String(p.id) } });
     }
     if (!out.length) {
-      const me = await fetch("https://graph.facebook.com/v22.0/me?fields=id,name", { headers: h }).then((x) => x.json());
-      if (me.id) out.push({ id: String(me.id), name: String(me.name || provider), token: accessToken, platform: provider, metadata: {} });
+      const requirement = provider === "instagram"
+        ? "No linked Instagram professional account was found. Link an Instagram Business/Creator account to a Facebook Page and retry."
+        : provider === "whatsapp"
+          ? "Meta OAuth succeeded, but WhatsApp Business requires selecting a Business Account and phone number ID. No WhatsApp connection was saved."
+          : "No Facebook Page you manage was returned by Meta. A personal profile cannot be used as a Page publishing connection.";
+      throw new Error(requirement);
     }
+    if (provider === "whatsapp") throw new Error("WhatsApp Business requires a separate WABA and phone-number selection flow. No WhatsApp connection was saved.");
     return out;
   }
   if (provider === "youtube") {
@@ -325,7 +330,7 @@ async function publishJob(userId: string, jobId: string) {
       postId = String(d.id); postUrl = "https://www.youtube.com/watch?v=" + postId;
     } else if (conn.provider === "tiktok") {
       if (job.content_type !== "video" || !content.media_url || !safePublicHttpsUrl(String(content.media_url))) throw new Error("TikTok publishing requires video content with a public HTTPS URL on a verified domain.");
-      const init = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ post_info: { title: String(content.text || "").slice(0, 150), privacy_level: String(content.privacy_level || "PUBLIC_TO_EVERYONE"), disable_duet: false, disable_comment: false, disable_stitch: false }, source_info: { source: "PULL_FROM_URL", video_url: String(content.media_url) } }) });
+      const init = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ post_info: { title: String(content.text || "").slice(0, 150), privacy_level: String(content.privacy_level || "SELF_ONLY"), disable_duet: false, disable_comment: false, disable_stitch: false }, source_info: { source: "PULL_FROM_URL", video_url: String(content.media_url) } }) });
       const initData = await init.json().catch(() => ({}));
       const publishId = initData.data?.publish_id;
       if (!init.ok || !publishId) throw new Error("TikTok rejected video publishing. Verify domain ownership, privacy options and app approval.");
@@ -371,9 +376,8 @@ Deno.serve(async (req) => {
       const state = url.searchParams.get("state") || "";
       if (!code || !state || !PROVIDERS.includes(provider)) return redirect(appUrl() + "/social-automation?error=invalid_oauth_response");
       const stateHash = await sha256(state);
-      const { data: oauthState } = await admin.from("social_oauth_states").select("*").eq("state_hash", stateHash).eq("provider", provider).is("consumed_at", null).gt("expires_at", new Date().toISOString()).maybeSingle();
+      const { data: oauthState } = await admin.from("social_oauth_states").update({ consumed_at: new Date().toISOString() }).eq("state_hash", stateHash).eq("provider", provider).is("consumed_at", null).gt("expires_at", new Date().toISOString()).select("*").maybeSingle();
       if (!oauthState) return redirect(appUrl() + "/social-automation?error=expired_oauth_state");
-      await admin.from("social_oauth_states").update({ consumed_at: new Date().toISOString() }).eq("state_hash", stateHash).is("consumed_at", null);
       const tokenData = await exchangeCode(provider, code, oauthState.code_verifier || undefined);
       if (["facebook", "instagram", "whatsapp"].includes(provider)) {
         const { clientId, clientSecret } = credentials(provider);
@@ -512,6 +516,7 @@ Deno.serve(async (req) => {
     return json({ error: "Unknown action." }, 404);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected social automation error.";
+    if (action === "oauth_callback") return redirect(appUrl() + "/social-automation?error=" + encodeURIComponent(message));
     return json({ error: message }, 400);
   }
 });
