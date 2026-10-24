@@ -180,9 +180,137 @@ Deno.serve(async (req: Request) => {
         contents: [{ role: "user", parts: [{ text: request }] }],
         generationConfig: { responseMimeType: "application/json", responseSchema: planSchema, temperature: 0.2, maxOutputTokens: 1500, thinkingConfig: { thinkingLevel: "low" } },
       });
+      const restoreTaskAfterQuotaBlock = async (message: string) => {
+        const at = new Date().toISOString();
+        const { error } = await supabase.from("tasks").update({
+          status: "queued",
+          attempt_count: queuedTask.attempt_count,
+          locked_at: null,
+          last_error: message,
+          updated_at: at,
+        }).eq("id", task.id).eq("user_id", auth.user.id).eq("status", "running");
+        if (error) throw new Error("Unable to restore task after AI quota check");
+        const [historyWrite, activityWrite] = await Promise.all([
+          supabase.from("task_history").insert({
+            task_id: task.id,
+            user_id: auth.user.id,
+            at,
+            note: message,
+          }),
+          supabase.from("activity_log").insert({
+            user_id: auth.user.id,
+            at,
+            actor: "Hasib AI Agent",
+            event: "AI task paused by quota guard",
+          }),
+        ]);
+        if (historyWrite.error) console.error("Task quota history write failed", historyWrite.error.message);
+        if (activityWrite.error) console.error("Task quota activity write failed", activityWrite.error.message);
+      };
+
+      let requestQuotaData: unknown = null;
+      let requestQuotaError: unknown = null;
+      try {
+        const quotaResponse = await supabase.rpc("consume_ai_request", { p_kind: "planner" });
+        requestQuotaData = quotaResponse.data;
+        requestQuotaError = quotaResponse.error;
+      } catch (error) {
+        requestQuotaError = error;
+      }
+      const requestQuotaCandidate = Array.isArray(requestQuotaData) ? requestQuotaData[0] : requestQuotaData;
+      const requestQuotaRow = typeof requestQuotaCandidate === "object" && requestQuotaCandidate !== null
+        ? requestQuotaCandidate as Record<string, unknown>
+        : null;
+      if (requestQuotaError || !requestQuotaRow ||
+          typeof requestQuotaRow.allowed !== "boolean" ||
+          typeof requestQuotaRow.retry_after_seconds !== "number" ||
+          typeof requestQuotaRow.daily_remaining !== "number") {
+        const message = "AI usage protection is temporarily unavailable; task remains queued.";
+        await restoreTaskAfterQuotaBlock(message);
+        return json(req, { task_id: task.id, status: "queued", error: message }, 503);
+      }
+      if (!requestQuotaRow.allowed) {
+        const retryAfter = Math.max(1, Math.floor(requestQuotaRow.retry_after_seconds));
+        const message = "AI planner request limit reached. Try again in " + retryAfter + " seconds.";
+        await restoreTaskAfterQuotaBlock(message);
+        return json(req, {
+          task_id: task.id,
+          status: "queued",
+          error: message,
+          retry_after_seconds: retryAfter,
+        }, 429);
+      }
+
+      const reservedTokens = Math.ceil(requestBody.length * 2) + 1500;
+      if (reservedTokens > 150000) {
+        const message = "AI planner request is too large for the token budget; shorten the task request.";
+        await restoreTaskAfterQuotaBlock(message);
+        return json(req, { task_id: task.id, status: "queued", error: message }, 413);
+      }
+
+      let tokenBudgetData: unknown = null;
+      let tokenBudgetError: unknown = null;
+      try {
+        const budgetResponse = await supabase.rpc("reserve_ai_token_budget", {
+          p_kind: "planner",
+          p_reserved_tokens: reservedTokens,
+        });
+        tokenBudgetData = budgetResponse.data;
+        tokenBudgetError = budgetResponse.error;
+      } catch (error) {
+        tokenBudgetError = error;
+      }
+      const tokenBudgetCandidate = Array.isArray(tokenBudgetData) ? tokenBudgetData[0] : tokenBudgetData;
+      const tokenBudgetRow = typeof tokenBudgetCandidate === "object" && tokenBudgetCandidate !== null
+        ? tokenBudgetCandidate as Record<string, unknown>
+        : null;
+      if (tokenBudgetError || !tokenBudgetRow ||
+          typeof tokenBudgetRow.allowed !== "boolean" ||
+          typeof tokenBudgetRow.retry_after_seconds !== "number" ||
+          typeof tokenBudgetRow.daily_remaining !== "number") {
+        const message = "AI token-budget protection is temporarily unavailable; task remains queued.";
+        await restoreTaskAfterQuotaBlock(message);
+        return json(req, { task_id: task.id, status: "queued", error: message }, 503);
+      }
+      if (!tokenBudgetRow.allowed) {
+        const retryAfter = Math.max(1, Math.floor(tokenBudgetRow.retry_after_seconds));
+        const message = "Daily AI token budget reached. Try again in " + retryAfter + " seconds.";
+        await restoreTaskAfterQuotaBlock(message);
+        return json(req, {
+          task_id: task.id,
+          status: "queued",
+          error: message,
+          retry_after_seconds: retryAfter,
+        }, 429);
+      }
+      if (typeof tokenBudgetRow.reservation_id !== "string" || tokenBudgetRow.reservation_id.length < 16) {
+        const message = "AI token-budget protection returned an invalid reservation; task remains queued.";
+        await restoreTaskAfterQuotaBlock(message);
+        return json(req, { task_id: task.id, status: "queued", error: message }, 503);
+      }
+
       const response = await fetchGeminiWithFallback(apiKey, model, requestBody, timeoutMs);
       if (!response.ok) throw new Error(`Planner API failed (HTTP ${response.status})`);
-      const data = await response.json();
+      const data = await response.json() as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        usageMetadata?: { totalTokenCount?: number };
+      };
+      const reportedTokenCount = data.usageMetadata?.totalTokenCount;
+      const actualTokens = typeof reportedTokenCount === "number" &&
+        Number.isSafeInteger(reportedTokenCount) && reportedTokenCount >= 0
+        ? reportedTokenCount
+        : reservedTokens;
+      try {
+        const settlement = await supabase.rpc("settle_ai_token_budget", {
+          p_reservation_id: tokenBudgetRow.reservation_id,
+          p_actual_tokens: actualTokens,
+        });
+        if (settlement.error || settlement.data !== true) {
+          console.error("Task Runner AI token settlement failed; conservative reservation retained", settlement.error?.message);
+        }
+      } catch (settlementError) {
+        console.error("Task Runner AI token settlement failed; conservative reservation retained", settlementError);
+      }
       const text = data.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text ?? "").join("").trim();
       if (!text) throw new Error("Planner returned an empty response");
       result = JSON.parse(text);
