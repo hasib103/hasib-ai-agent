@@ -47,6 +47,7 @@ function FocusPage() {
       const next = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       setRemaining(next);
       if (next === 0) {
+        window.clearInterval(timer);
         setRunning(false);
         setDeadline(null);
         if (mode === 25) {
