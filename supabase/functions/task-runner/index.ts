@@ -121,6 +121,13 @@ Deno.serve(async (req: Request) => {
     global: { headers: { Authorization: authHeader } },
   });
 
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const serviceSupabase = serviceRoleKey
+    ? createClient(supabaseUrl, serviceRoleKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+    : null;
+
   const { data: auth, error: authError } = await supabase.auth.getUser(token);
   if (authError || !auth.user) return json(req, { error: "Invalid or expired session" }, 401);
 
@@ -301,12 +308,19 @@ Deno.serve(async (req: Request) => {
         ? reportedTokenCount
         : reservedTokens;
       try {
-        const settlement = await supabase.rpc("settle_ai_token_budget", {
-          p_reservation_id: tokenBudgetRow.reservation_id,
-          p_actual_tokens: actualTokens,
-        });
-        if (settlement.error || settlement.data !== true) {
-          console.error("Task Runner AI token settlement failed; conservative reservation retained", settlement.error?.message);
+        if (!serviceSupabase) {
+          console.error("SUPABASE_SERVICE_ROLE_KEY is not configured; conservative AI token reservation retained");
+        } else if (actualTokens > reservedTokens) {
+          console.error("Provider usage exceeded the reservation; conservative AI token reservation retained");
+        } else {
+          const settlement = await serviceSupabase.rpc("settle_ai_token_budget_server", {
+            p_user_id: auth.user.id,
+            p_reservation_id: tokenBudgetRow.reservation_id,
+            p_actual_tokens: actualTokens,
+          });
+          if (settlement.error || settlement.data !== true) {
+            console.error("Task Runner AI token settlement failed; conservative reservation retained", settlement.error?.message);
+          }
         }
       } catch (settlementError) {
         console.error("Task Runner AI token settlement failed; conservative reservation retained", settlementError);

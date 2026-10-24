@@ -16,11 +16,15 @@ describe("Task Runner AI quota enforcement", () => {
     expect(quotaIndex).toBeLessThan(providerIndex);
   });
 
-  it("reserves token budget before provider use and settles provider-reported usage", () => {
+  it("reserves token budget before provider use and settles only through the server role", () => {
     expect(source).toContain('supabase.rpc("reserve_ai_token_budget"');
-    expect(source).toContain('supabase.rpc("settle_ai_token_budget"');
+    expect(source).toContain('serviceSupabase.rpc("settle_ai_token_budget_server"');
+    expect(source).toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(source).toContain("p_user_id: auth.user.id");
     expect(source).toContain("usageMetadata?.totalTokenCount");
-    expect(source).toContain("reservedTokens");
+    expect(source).toContain("actualTokens > reservedTokens");
+    expect(source).toContain("conservative AI token reservation retained");
+    expect(source).not.toContain('supabase.rpc("settle_ai_token_budget"');
   });
 
   it("requeues quota-blocked tasks without consuming a retry attempt", () => {
