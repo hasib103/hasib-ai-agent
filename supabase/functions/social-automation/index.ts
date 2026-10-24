@@ -197,6 +197,16 @@ async function authenticate(req: Request) {
   if (error || !data.user) throw new Error("Your session expired. Sign in again.");
   return data.user;
 }
+function safePublicHttpsUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (u.protocol !== "https:" || u.username || u.password || !h || h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal")) return false;
+    if (/^(10\.|127\.|169\.254\.|192\.168\.|0\.)/.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || h === "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80:")) return false;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(":")) return false;
+    return true;
+  } catch { return false; }
+}
 async function getValidAccessToken(conn: any): Promise<string> {
   const expiresAt = conn.token_expires_at ? new Date(conn.token_expires_at).getTime() : 0;
   if (!expiresAt || expiresAt > Date.now() + 5 * 60_000) return decrypt(conn.token_ciphertext, conn.token_iv);
@@ -287,7 +297,7 @@ async function publishJob(userId: string, jobId: string) {
       if (!p.id) throw new Error("Threads could not publish the post.");
       postId = String(p.id); postUrl = "https://www.threads.net/@"+String(conn.metadata?.username || "user")+"/post/"+postId;
     } else if (conn.provider === "instagram") {
-      if (!content.media_url || !/^https:\/\//i.test(String(content.media_url))) throw new Error("Instagram requires a public HTTPS media_url; a text-only post is not supported.");
+      if (!content.media_url || !safePublicHttpsUrl(String(content.media_url))) throw new Error("Instagram requires a public HTTPS media_url; a text-only post is not supported.");
       const params = new URLSearchParams({ caption: String(content.text || ""), access_token: token });
       if (job.content_type === "video") { params.set("media_type", "REELS"); params.set("video_url", String(content.media_url)); }
       else params.set("image_url", String(content.media_url));
@@ -296,8 +306,47 @@ async function publishJob(userId: string, jobId: string) {
       const p = await fetch("https://graph.facebook.com/v22.0/" + encodeURIComponent(conn.external_account_id) + "/media_publish", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ creation_id: String(c.id), access_token: token }) }).then((r) => r.json());
       if (!p.id) throw new Error("Instagram could not publish the media.");
       postId = String(p.id);
+    } else if (conn.provider === "youtube") {
+      if (job.content_type !== "video" || !content.media_url || !safePublicHttpsUrl(String(content.media_url))) throw new Error("YouTube publishing requires a public HTTPS video URL and video content type.");
+      const source = await fetch(String(content.media_url), { redirect: "error", signal: AbortSignal.timeout(20000) });
+      if (!source.ok) throw new Error("YouTube could not fetch the video source URL.");
+      const length = Number(source.headers.get("content-length") || 0);
+      if (length > 50 * 1024 * 1024) throw new Error("Video is over the 50 MB upload safety limit for this workflow.");
+      const media = await source.arrayBuffer();
+      if (media.byteLength > 50 * 1024 * 1024) throw new Error("Video is over the 50 MB upload safety limit for this workflow.");
+      const boundary = "hasib_social_" + crypto.randomUUID().replaceAll("-", "");
+      const metadata = { snippet: { title: String(content.title || content.text || "Hasib AI Agent video").slice(0, 100), description: String(content.text || "").slice(0, 5000) }, status: { privacyStatus: content.privacy_status === "public" ? "public" : "private" } };
+      const body = new Blob(["--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n", JSON.stringify(metadata), "\r\n--" + boundary + "\r\nContent-Type: video/*\r\n\r\n", media, "\r\n--" + boundary + "--"]);
+      const response = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "multipart/related; boundary=" + boundary }, body, signal: AbortSignal.timeout(90000) });
+      const d = await response.json().catch(() => ({}));
+      if (!response.ok || !d.id) throw new Error("YouTube upload failed (HTTP " + response.status + "). Check channel permissions and API quota.");
+      postId = String(d.id); postUrl = "https://www.youtube.com/watch?v=" + postId;
+    } else if (conn.provider === "tiktok") {
+      if (job.content_type !== "video" || !content.media_url || !safePublicHttpsUrl(String(content.media_url))) throw new Error("TikTok publishing requires video content with a public HTTPS URL on a verified domain.");
+      const init = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ post_info: { title: String(content.text || "").slice(0, 150), privacy_level: String(content.privacy_level || "PUBLIC_TO_EVERYONE"), disable_duet: false, disable_comment: false, disable_stitch: false }, source_info: { source: "PULL_FROM_URL", video_url: String(content.media_url) } }) });
+      const initData = await init.json().catch(() => ({}));
+      const publishId = initData.data?.publish_id;
+      if (!init.ok || !publishId) throw new Error("TikTok rejected video publishing. Verify domain ownership, privacy options and app approval.");
+      let complete: any = null;
+      for (let i = 0; i < 5; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        const statusResponse = await fetch("https://open.tiktokapis.com/v2/post/publish/status/fetch/", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ publish_id: publishId }) });
+        complete = await statusResponse.json().catch(() => ({}));
+        const status = complete.data?.status;
+        if (status === "PUBLISH_COMPLETE") break;
+        if (status === "FAILED") throw new Error("TikTok could not publish the video. Check the creator account and video policy.");
+      }
+      if (complete?.data?.status !== "PUBLISH_COMPLETE") throw new Error("TikTok accepted the publish request but processing is still pending. Retry status check later; publish ID: " + String(publishId));
+      postId = String(complete.data?.publicaly_available_post_id?.[0] || publishId);
+    } else if (conn.provider === "pinterest") {
+      if (job.content_type !== "image" || !content.media_url || !safePublicHttpsUrl(String(content.media_url))) throw new Error("Pinterest pins require image content with a public HTTPS image URL.");
+      const boardId = String(conn.metadata?.default_board_id || "");
+      if (!boardId) throw new Error("No Pinterest board was found. Create a board and reconnect Pinterest.");
+      const d = await fetch("https://api.pinterest.com/v5/pins", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ board_id: boardId, title: String(content.title || content.text || "New Pin").slice(0, 100), description: String(content.text || "").slice(0, 800), media_source: { source_type: "image_url", url: String(content.media_url) } }) }).then((r) => r.json());
+      if (!d.id) throw new Error("Pinterest rejected the Pin. Check board permissions and pins:write scope.");
+      postId = String(d.id); postUrl = d.link || "";
     } else {
-      throw new Error("Publishing is not enabled for " + conn.provider + " yet. This provider's required media/account setup is not complete.");
+      throw new Error("Publishing is not enabled for " + conn.provider + ". The provider requires a separate account or content workflow.");
     }
     await admin.from("social_publish_jobs").update({ status: "published", published_at: new Date().toISOString(), provider_post_id: postId, provider_post_url: postUrl || null, updated_at: new Date().toISOString(), last_error: null }).eq("id", jobId).eq("user_id", userId);
     return { id: jobId, status: "published", provider: conn.provider, provider_post_id: postId, provider_post_url: postUrl || null };
@@ -391,7 +440,7 @@ Deno.serve(async (req) => {
       const text = typeof body.content?.text === "string" ? body.content.text.trim() : "";
       const mediaUrl = typeof body.content?.media_url === "string" ? body.content.media_url.trim() : "";
       if (!text && !mediaUrl) return json({ error: "Add post text or a media URL." }, 400);
-      if (mediaUrl && !/^https:\/\//i.test(mediaUrl)) return json({ error: "Media URLs must use HTTPS." }, 400);
+      if (mediaUrl && !safePublicHttpsUrl(mediaUrl)) return json({ error: "Media URLs must use a public HTTPS address." }, 400);
       const scheduledAt = body.scheduled_at ? new Date(body.scheduled_at) : null;
       if (scheduledAt && (!Number.isFinite(scheduledAt.getTime()) || scheduledAt.getTime() < Date.now() + 60_000)) return json({ error: "Choose a schedule at least one minute in the future." }, 400);
       const status = body.request_approval === true ? "pending_approval" : "draft";
