@@ -24,11 +24,13 @@ const providers = [
 
 type Provider = typeof providers[number]["id"];
 type Account = { id: string; provider: Provider; external_account_id: string; account_name: string; token_expires_at: string | null; scopes: string[]; metadata: Record<string, unknown>; status: string; created_at: string };
+type ProviderStatus = { provider: Provider; configured: boolean; names: string[]; publishing_supported: boolean };
 type Job = { id: string; connection_id: string; content_type: string; content: { text?: string; media_url?: string }; scheduled_at: string | null; status: string; approved_at: string | null; published_at: string | null; provider_post_id: string | null; provider_post_url: string | null; last_error: string | null; created_at: string };
 type MetricResult = { provider: string; captured_at: string; metrics: Record<string, unknown> };
 
 function SocialAutomation() {
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
@@ -58,8 +60,8 @@ function SocialAutomation() {
   const refresh = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [accountData, jobData] = await Promise.all([call("accounts"), call("jobs")]);
-      setAccounts(accountData.accounts || []); setJobs(jobData.jobs || []);
+      const [accountData, jobData, providerData] = await Promise.all([call("accounts"), call("jobs"), call("provider_status")]);
+      setAccounts(accountData.accounts || []); setJobs(jobData.jobs || []); setProviderStatuses(providerData.providers || []);
     } catch (e) { setError(e instanceof Error ? e.message : "ডেটা লোড করা যায়নি।"); }
     finally { setLoading(false); }
   }, [call]);
@@ -141,9 +143,10 @@ function SocialAutomation() {
       <div className="grid gap-2 sm:grid-cols-2">
         {providers.map((p) => {
           const connected = accounts.filter((a) => a.provider === p.id);
+          const providerStatus = providerStatuses.find((item) => item.provider === p.id);
           return <article key={p.id} className="rounded-lg border p-3">
-            <div className="flex items-start justify-between gap-2"><div><h3 className="font-medium">{p.name}</h3><p className="mt-1 text-xs text-muted-foreground">{p.note}</p></div><span className={"shrink-0 rounded-full px-2 py-1 text-[10px] " + (connected.length ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground")}>{connected.length ? connected.length + " সংযুক্ত" : "সংযুক্ত নয়"}</span></div>
-            <button type="button" className="btn mt-3 w-full" disabled={!!busy || loading || p.id === "whatsapp"} onClick={() => void connect(p.id)}>{p.id === "whatsapp" ? "WABA সেটআপ প্রয়োজন" : busy === "connect:" + p.id ? <LoaderCircle className="mr-1 inline h-4 w-4 animate-spin" /> : <Link2 className="mr-1 inline h-4 w-4" />}{p.id === "whatsapp" ? "" : "OAuth দিয়ে সংযোগ"}</button>
+            <div className="flex items-start justify-between gap-2"><div><h3 className="font-medium">{p.name}</h3><p className="mt-1 text-xs text-muted-foreground">{p.note}</p></div><span className={"shrink-0 rounded-full px-2 py-1 text-[10px] " + (connected.length ? "bg-primary/10 text-primary" : providerStatus?.configured ? "bg-secondary text-foreground" : "bg-amber-500/10 text-muted-foreground")}>{connected.length ? connected.length + " সংযুক্ত" : providerStatus?.configured ? "OAuth প্রস্তুত" : "Developer App দরকার"}</span></div>
+            <button type="button" className="btn mt-3 w-full" disabled={!!busy || loading || p.id === "whatsapp" || providerStatus?.configured !== true} onClick={() => void connect(p.id)}>{p.id === "whatsapp" ? "WABA সেটআপ প্রয়োজন" : busy === "connect:" + p.id ? <LoaderCircle className="mr-1 inline h-4 w-4 animate-spin" /> : <Link2 className="mr-1 inline h-4 w-4" />}{p.id === "whatsapp" ? "" : providerStatus?.configured ? "OAuth দিয়ে সংযোগ" : "প্রথমে Developer App secrets সেট করুন"}</button>
           </article>;
         })}
       </div>
