@@ -8,6 +8,7 @@ const nav = [
   { to: "/tasks", label: "Tasks", icon: "☰" },
   { to: "/math-solver", label: "Math Solver", icon: "∑" },
   { to: "/coding-coach", label: "Coding Coach", icon: "⌘" },
+  { to: "/cybersecurity-lab", label: "Cybersecurity Lab", icon: "⛨" },
   { to: "/capture", label: "Quick Capture", icon: "+" },
   { to: "/focus", label: "Focus", icon: "◷" },
   { to: "/approvals", label: "Approvals", icon: "✓" },
@@ -27,7 +28,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const active = { className: "bg-accent text-accent-foreground" };
   return (
     <div className="min-h-[100dvh] md:flex">
-      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r p-4 gap-1 sticky top-0 h-screen">
+      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r p-4 gap-1 sticky top-0 h-screen overflow-y-auto">
         <div className="px-3 pb-5 pt-1">
           <div className="font-display text-lg font-semibold">Hasib<span className="text-primary"> AI Agent</span></div>
           <div className="text-xs text-muted-foreground font-mono">control panel · MVP</div>
@@ -49,6 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link to="/capture" activeProps={{ className: "text-primary" }}>Capture</Link>
             <Link to="/math-solver" activeProps={{ className: "text-primary" }}>Math</Link>
             <Link to="/coding-coach" activeProps={{ className: "text-primary" }}>Coding</Link>
+            <Link to="/cybersecurity-lab" activeProps={{ className: "text-primary" }}>Security</Link>
             <Link to="/prompt-studio" activeProps={{ className: "text-primary" }}>Prompts</Link>
             <Link to="/integrations" activeProps={{ className: "text-primary" }}>Integrations</Link>
             <Link to="/activity" activeProps={{ className: "text-primary" }}>Log</Link>
