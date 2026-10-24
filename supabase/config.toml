@@ -1,1 +1,4 @@
 project_id = "qmdxpvimryxwezqmjbge"
+
+[functions.social-automation]
+verify_jwt = false
