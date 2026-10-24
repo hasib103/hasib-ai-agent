@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { ArrowRight, Download, Pencil, Plus, Save, Sparkles, Trash2, UserRoundCog } from "lucide-react";
+import { ArrowRight, Download, Pencil, Save, Sparkles, Trash2, UserRoundCog } from "lucide-react";
 import { PageHeader } from "@/lib/store";
 import {
   ACTIVE_CUSTOM_ASSISTANT_KEY,
