@@ -20,7 +20,7 @@
 ## ২. প্রকাশের আগে বাধ্যতামূলক নিরাপত্তা গেট
 
 - [ ] Supabase Auth-এ leaked-password protection চালু করা এবং Security Advisor পুনরায় চালানো।
-- [ ] `consume_ai_request`, `reserve_ai_token_budget`, `settle_ai_token_budget` SECURITY DEFINER RPC-গুলোর grants, `auth.uid()` checks, fixed `search_path`, allowed arguments এবং quota bypass পরীক্ষার প্রমাণ সংরক্ষণ করা। Advisor warning দেখালেই অন্ধভাবে permission সরানো যাবে না, কারণ অ্যাপের quota enforcement এগুলোর ওপর নির্ভর করে।
+- [ ] `consume_ai_request`, `reserve_ai_token_budget`, `settle_ai_token_budget` SECURITY DEFINER RPC-গুলোর grants, `auth.uid()` checks, fixed `search_path`, allowed arguments এবং quota bypass পরীক্ষার প্রমাণ সংরক্ষণ করা। Live definition review-তে দেখা গেছে authenticated role `settle_ai_token_budget` চালাতে পারে এবং caller-প্রদত্ত token count গ্রহণ করা হয়; তাই backend-only settlement না হওয়া পর্যন্ত rolling token ledger-কে tamper-proof hard cap হিসেবে ধরা যাবে না। এই পথ বদলানোর আগে সব server-side caller চিহ্নিত করে regression test যোগ করতে হবে। Advisor warning দেখালেই অন্ধভাবে permission সরানো যাবে না, কারণ অ্যাপের quota enforcement এগুলোর ওপর নির্ভর করে.
 - [ ] `social-automation`-এর public endpoint-এ প্রতিটি action-এর authentication/authorization পরীক্ষা করা; OAuth callback-এর state, expiry, single-use behavior ও token handling যাচাই করা।
 - [ ] Anonymous access এবং দুই ভিন্ন ব্যবহারকারীর cross-account data access পরীক্ষা করা।
 - [ ] প্রকাশের আগে secret scan, CodeQL, build, unit tests এবং Edge Function type-check সব সফল হতে হবে।
