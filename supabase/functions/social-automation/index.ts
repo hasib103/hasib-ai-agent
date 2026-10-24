@@ -345,7 +345,9 @@ Deno.serve(async (req) => {
       return redirect(appUrl() + "/social-automation?connected=" + encodeURIComponent(provider) + "&count=" + accounts.length);
     }
     if (action === "run_due_jobs") {
-      if (!env("SOCIAL_SCHEDULER_SECRET") || req.headers.get("x-social-scheduler-secret") !== env("SOCIAL_SCHEDULER_SECRET")) return json({ error: "Unauthorized scheduler." }, 401);
+      const schedulerSecret = req.headers.get("x-social-scheduler-secret") || "";
+      const { data: schedulerAuthorized, error: schedulerAuthError } = await admin.rpc("verify_social_scheduler_secret", { p_candidate: schedulerSecret });
+      if (schedulerAuthError || schedulerAuthorized !== true) return json({ error: "Unauthorized scheduler." }, 401);
       const { data: jobs, error } = await admin.from("social_publish_jobs").select("id,user_id").eq("status", "scheduled").lte("scheduled_at", new Date().toISOString()).limit(25);
       if (error) throw new Error("Could not read scheduled jobs.");
       const results = [];
@@ -420,7 +422,7 @@ Deno.serve(async (req) => {
       const id = String(body.connection_id || "");
       const { data: conn } = await admin.from("social_connections").select("*").eq("id", id).eq("user_id", user.id).eq("status", "connected").single();
       if (!conn) return json({ error: "Connected account not found." }, 404);
-      const token = await decrypt(conn.token_ciphertext, conn.token_iv);
+      const token = await getValidAccessToken(conn);
       let metrics: Record<string, unknown> = {};
       if (conn.provider === "facebook") {
         const d = await fetch("https://graph.facebook.com/v22.0/" + encodeURIComponent(conn.external_account_id) + "/insights?metric=page_impressions,page_engaged_users&period=day&access_token=" + encodeURIComponent(token)).then((r) => r.json());
