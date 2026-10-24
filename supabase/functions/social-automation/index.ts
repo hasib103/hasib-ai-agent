@@ -197,6 +197,59 @@ async function authenticate(req: Request) {
   if (error || !data.user) throw new Error("Your session expired. Sign in again.");
   return data.user;
 }
+async function getValidAccessToken(conn: any): Promise<string> {
+  const expiresAt = conn.token_expires_at ? new Date(conn.token_expires_at).getTime() : 0;
+  if (!expiresAt || expiresAt > Date.now() + 5 * 60_000) return decrypt(conn.token_ciphertext, conn.token_iv);
+  const currentToken = await decrypt(conn.token_ciphertext, conn.token_iv);
+  let refreshed: { access_token?: string; refresh_token?: string; expires_in?: number; data?: { access_token?: string; refresh_token?: string; expires_in?: number } } | null = null;
+  if (conn.provider === "threads") {
+    const r = await fetch("https://graph.threads.net/refresh_access_token?grant_type=th_refresh_token&access_token=" + encodeURIComponent(currentToken));
+    refreshed = await r.json().catch(() => null);
+    if (!r.ok) refreshed = null;
+  } else if (conn.refresh_ciphertext && conn.refresh_iv && ["youtube","x","linkedin","pinterest","tiktok"].includes(conn.provider)) {
+    const refreshToken = await decrypt(conn.refresh_ciphertext, conn.refresh_iv);
+    const provider = conn.provider as Provider;
+    const { clientId, clientSecret } = credentials(provider);
+    const body = new URLSearchParams();
+    const headers: Record<string,string> = { "Content-Type": "application/x-www-form-urlencoded" };
+    let url = "";
+    if (provider === "youtube") {
+      url = "https://oauth2.googleapis.com/token";
+      body.set("client_id", clientId); body.set("client_secret", clientSecret); body.set("refresh_token", refreshToken); body.set("grant_type", "refresh_token");
+    } else if (provider === "x") {
+      url = "https://api.twitter.com/2/oauth2/token"; headers.Authorization = "Basic " + btoa(clientId + ":" + clientSecret);
+      body.set("client_id", clientId); body.set("refresh_token", refreshToken); body.set("grant_type", "refresh_token");
+    } else if (provider === "linkedin") {
+      url = "https://www.linkedin.com/oauth/v2/accessToken";
+      body.set("client_id", clientId); body.set("client_secret", clientSecret); body.set("refresh_token", refreshToken); body.set("grant_type", "refresh_token");
+    } else if (provider === "pinterest") {
+      url = "https://api.pinterest.com/v5/oauth/token"; headers.Authorization = "Basic " + btoa(clientId + ":" + clientSecret);
+      body.set("grant_type", "refresh_token"); body.set("refresh_token", refreshToken);
+    } else {
+      url = "https://open.tiktokapis.com/v2/oauth/token/";
+      body.set("client_key", clientId); body.set("client_secret", clientSecret); body.set("refresh_token", refreshToken); body.set("grant_type", "refresh_token");
+    }
+    const r = await fetch(url, { method: "POST", headers, body, signal: AbortSignal.timeout(12000) });
+    refreshed = await r.json().catch(() => null);
+    if (!r.ok) refreshed = null;
+  }
+  const nextToken = refreshed?.data?.access_token || refreshed?.access_token;
+  if (!nextToken) {
+    await admin.from("social_connections").update({ status: "needs_reauth", updated_at: new Date().toISOString() }).eq("id", conn.id).eq("user_id", conn.user_id);
+    throw new Error("This social account needs to be reconnected because its access token expired.");
+  }
+  const nextRefresh = refreshed?.data?.refresh_token || refreshed?.refresh_token;
+  const encrypted = await encrypt(String(nextToken));
+  const refreshEncrypted = nextRefresh ? await encrypt(String(nextRefresh)) : null;
+  await admin.from("social_connections").update({
+    token_ciphertext: encrypted.ciphertext, token_iv: encrypted.iv,
+    refresh_ciphertext: refreshEncrypted?.ciphertext ?? conn.refresh_ciphertext,
+    refresh_iv: refreshEncrypted?.iv ?? conn.refresh_iv,
+    token_expires_at: new Date(Date.now() + Number(refreshed?.data?.expires_in || refreshed?.expires_in || 3600) * 1000).toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", conn.id).eq("user_id", conn.user_id);
+  return String(nextToken);
+}
 async function publishJob(userId: string, jobId: string) {
   const { data: job, error: jobError } = await admin.from("social_publish_jobs").select("*").eq("id", jobId).eq("user_id", userId).single();
   if (jobError || !job) throw new Error("Publish job not found.");
@@ -205,7 +258,7 @@ async function publishJob(userId: string, jobId: string) {
   const { data: conn, error: connError } = await admin.from("social_connections").select("*").eq("id", job.connection_id).eq("user_id", userId).eq("status", "connected").single();
   if (connError || !conn) throw new Error("Connected account not found. Reconnect it and try again.");
   await admin.from("social_publish_jobs").update({ status: "publishing", attempts: job.attempts + 1, updated_at: new Date().toISOString(), last_error: null }).eq("id", jobId).eq("user_id", userId);
-  const token = await decrypt(conn.token_ciphertext, conn.token_iv);
+  const token = await getValidAccessToken(conn);
   const content = job.content || {};
   let postId = ""; let postUrl = "";
   try {
@@ -271,6 +324,22 @@ Deno.serve(async (req) => {
       if (!oauthState) return redirect(appUrl() + "/social-automation?error=expired_oauth_state");
       await admin.from("social_oauth_states").update({ consumed_at: new Date().toISOString() }).eq("state_hash", stateHash).is("consumed_at", null);
       const tokenData = await exchangeCode(provider, code, oauthState.code_verifier || undefined);
+      if (["facebook", "instagram", "whatsapp"].includes(provider)) {
+        const { clientId, clientSecret } = credentials(provider);
+        const longUrl = new URL("https://graph.facebook.com/v22.0/oauth/access_token");
+        longUrl.searchParams.set("grant_type", "fb_exchange_token"); longUrl.searchParams.set("client_id", clientId);
+        longUrl.searchParams.set("client_secret", clientSecret); longUrl.searchParams.set("fb_exchange_token", tokenData.accessToken);
+        const longResponse = await fetch(longUrl);
+        const longData = await longResponse.json().catch(() => ({}));
+        if (longResponse.ok && longData.access_token) { tokenData.accessToken = String(longData.access_token); tokenData.expiresIn = Number(longData.expires_in || 5184000); }
+      } else if (provider === "threads") {
+        const { clientSecret } = credentials(provider);
+        const longUrl = new URL("https://graph.threads.net/access_token");
+        longUrl.searchParams.set("grant_type", "th_exchange_token"); longUrl.searchParams.set("client_secret", clientSecret); longUrl.searchParams.set("access_token", tokenData.accessToken);
+        const longResponse = await fetch(longUrl);
+        const longData = await longResponse.json().catch(() => ({}));
+        if (longResponse.ok && longData.access_token) { tokenData.accessToken = String(longData.access_token); tokenData.expiresIn = Number(longData.expires_in || 5184000); }
+      }
       const accounts = await providerAccounts(provider, tokenData.accessToken);
       for (const account of accounts) await storeConnection(oauthState.user_id, account, tokenData);
       return redirect(appUrl() + "/social-automation?connected=" + encodeURIComponent(provider) + "&count=" + accounts.length);
