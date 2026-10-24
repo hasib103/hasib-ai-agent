@@ -211,14 +211,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const finishedAt = new Date().toISOString();
-    const { error: historyError } = await supabase.from("task_history").insert({
-      task_id: task.id,
-      user_id: auth.user.id,
-      at: finishedAt,
-      note: `Task completed: ${task.task_type}`,
-    });
-    if (historyError) throw new Error("Task result was created but history could not be saved");
-
     const { error: finishError } = await supabase.from("tasks").update({
       status: "done",
       result,
@@ -228,16 +220,66 @@ Deno.serve(async (req: Request) => {
       updated_at: finishedAt,
     }).eq("id", task.id).eq("user_id", auth.user.id).eq("status", "running");
     if (finishError) throw new Error("Unable to persist task completion");
-    return json(req, { task_id: task.id, status: "done", result });
+
+    // Terminal state is saved first; audit-write failure must not falsely retry a completed task.
+    const [historyWrite, activityWrite] = await Promise.all([
+      supabase.from("task_history").insert({
+        task_id: task.id,
+        user_id: auth.user.id,
+        at: finishedAt,
+        note: `Task completed: ${task.task_type}`,
+      }),
+      supabase.from("activity_log").insert({
+        user_id: auth.user.id,
+        at: finishedAt,
+        actor: "Hasib AI Agent",
+        event: `Completed supported task: ${task.task_type}`,
+      }),
+    ]);
+    if (historyWrite.error) console.error("Task completion history write failed", historyWrite.error.message);
+    if (activityWrite.error) console.error("Task completion activity log write failed", activityWrite.error.message);
+    return json(req, {
+      task_id: task.id,
+      status: "done",
+      result,
+      history_saved: !historyWrite.error,
+      activity_logged: !activityWrite.error,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Task execution failed";
+    const failedAt = new Date().toISOString();
     const nextStatus = task.attempt_count < task.max_attempts ? "queued" : "failed";
-    await supabase.from("tasks").update({
+    const { error: stateError } = await supabase.from("tasks").update({
       status: nextStatus,
       last_error: message,
       locked_at: null,
-      updated_at: new Date().toISOString(),
+      updated_at: failedAt,
     }).eq("id", task.id).eq("user_id", auth.user.id).eq("status", "running");
-    return json(req, { task_id: task.id, status: nextStatus, error: message }, 500);
+    if (stateError) console.error("Failed to persist task failure state", stateError.message);
+
+    const historyNote = `Attempt ${task.attempt_count}/${task.max_attempts} failed; ${nextStatus === "queued" ? "task queued for retry" : "maximum attempts reached"}: ${message}`;
+    const [historyWrite, activityWrite] = await Promise.all([
+      supabase.from("task_history").insert({
+        task_id: task.id,
+        user_id: auth.user.id,
+        at: failedAt,
+        note: historyNote,
+      }),
+      supabase.from("activity_log").insert({
+        user_id: auth.user.id,
+        at: failedAt,
+        actor: "Hasib AI Agent",
+        event: `Task attempt ${task.attempt_count}/${task.max_attempts} failed; status: ${nextStatus}`,
+      }),
+    ]);
+    if (historyWrite.error) console.error("Task failure history write failed", historyWrite.error.message);
+    if (activityWrite.error) console.error("Task failure activity log write failed", activityWrite.error.message);
+    return json(req, {
+      task_id: task.id,
+      status: nextStatus,
+      error: message,
+      history_saved: !historyWrite.error,
+      activity_logged: !activityWrite.error,
+    }, 500);
   }
 });
