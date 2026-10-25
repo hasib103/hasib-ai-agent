@@ -32,6 +32,9 @@ jobs:
       - name: Type-check Task Runner Edge Function
         run: deno check supabase/functions/task-runner/index.ts
 
+      - name: Test Task Runner public URL validation
+        run: deno test supabase/functions/task-runner/public-url.test.ts
+
       - name: Verify Task Runner CORS allowlist
         shell: bash
         run: |
