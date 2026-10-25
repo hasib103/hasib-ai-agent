@@ -22,8 +22,9 @@ describe("Task Runner AI quota enforcement", () => {
     expect(source).toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(source).toContain("p_user_id: auth.user.id");
     expect(source).toContain("usageMetadata?.totalTokenCount");
-    expect(source).toContain("actualTokens > reservedTokens");
+    expect(source).toContain("actualTokens > 300_000");
     expect(source).toContain("conservative AI token reservation retained");
+    expect(source).toContain("Provider usage exceeded the settlement maximum");
     expect(source).not.toContain('supabase.rpc("settle_ai_token_budget"');
   });
 
