@@ -137,7 +137,7 @@ function validatePublicAnalysisUrl(value: unknown): URL {
     throw new Error("URL analysis supports only standard HTTP/HTTPS ports");
   }
 
-  const hostname = url.hostname.toLowerCase().replace(/\\.$/, "");
+  const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
   if (!hostname.includes(".") ||
       hostname === "localhost" ||
       hostname.endsWith(".localhost") ||
@@ -147,7 +147,7 @@ function validatePublicAnalysisUrl(value: unknown): URL {
       hostname.endsWith(".test") ||
       hostname.endsWith(".invalid") ||
       hostname.startsWith("[") ||
-      /^(?:\\d{1,3}\\.){3}\\d{1,3}$/.test(hostname) ||
+      /^(?:\d{1,3}\.){3}\d{1,3}$/.test(hostname) ||
       hostname.includes(":")) {
     throw new Error("URL analysis requires a public DNS hostname, not a local or IP-literal address");
   }
