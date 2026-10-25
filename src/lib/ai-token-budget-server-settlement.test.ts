@@ -59,6 +59,9 @@ describe("server-side AI token settlement", () => {
     expect(budgetSource).not.toContain('client.rpc("settle_ai_token_budget", args)');
     expect(plannerSource).toContain("settleAiTokenBudget(authData.user.id, tokenReservation.reservationId, actualTokens)");
     expect(voiceSource).toContain("settleAiTokenBudget(authData.user.id, tokenReservation.reservationId, actualTokens)");
+    expect(voiceSource).toContain("google_search");
+    expect(voiceSource).not.toContain("url_context");
+    expect(voiceSource).toContain("Task Inbox > Analyze a public URL");
   });
 
   it("allows actual usage up to 300,000 tokens while keeping execution service-role-only", () => {
