@@ -17,7 +17,7 @@ function reserveRpc(data: unknown, error: unknown | null = null) {
 }
 
 function settleRpc(data: unknown, error: unknown | null = null) {
-  return vi.fn(async (_args: { p_reservation_id: string; p_actual_tokens: number }): Promise<RpcResponse> => ({
+  return vi.fn(async (_args: { p_user_id: string; p_reservation_id: string; p_actual_tokens: number }): Promise<RpcResponse> => ({
     data,
     error,
   }));
@@ -65,15 +65,16 @@ describe("AI token budget", () => {
 
   it("settles actual provider token usage", async () => {
     const rpc = settleRpc(true);
-    await expect(settleAiTokenBudgetWithRpc(rpc, "9c41da87-0231-4abf-9c41-da8702314abf", 1200)).resolves.toBeUndefined();
+    await expect(settleAiTokenBudgetWithRpc(rpc, "00000000-0000-0000-0000-000000000001", "9c41da87-0231-4abf-9c41-da8702314abf", 1200)).resolves.toBeUndefined();
     expect(rpc).toHaveBeenCalledWith({
+      p_user_id: "00000000-0000-0000-0000-000000000001",
       p_reservation_id: "9c41da87-0231-4abf-9c41-da8702314abf",
       p_actual_tokens: 1200,
     });
   });
 
   it("retains the conservative reservation when settlement fails", async () => {
-    await expect(settleAiTokenBudgetWithRpc(settleRpc(false), "9c41da87-0231-4abf-9c41-da8702314abf", 1200))
+    await expect(settleAiTokenBudgetWithRpc(settleRpc(false), "00000000-0000-0000-0000-000000000001", "9c41da87-0231-4abf-9c41-da8702314abf", 1200))
       .rejects.toThrow("conservative reservation remains charged");
   });
 });
