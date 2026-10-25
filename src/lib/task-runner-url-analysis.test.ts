@@ -38,10 +38,11 @@ describe("Task Runner public URL analysis", () => {
 
   it("settles usage only through the server-role RPC and never executes page actions", () => {
     expect(handler).toContain('serviceSupabase.rpc("settle_ai_token_budget_server"');
-    expect(handler).toContain("actualTokens > reservedTokens");
+    expect(handler).toContain("actualTokens > 300_000");
     expect(handler).toContain("result = { url: targetUrl.toString()");
     expect(handler).not.toContain("fetch(targetUrl");
     expect(handler).not.toContain("window.location");
     expect(handler).not.toContain("form.submit");
+    expect(handler).toContain("URL analysis usage exceeded the settlement maximum");
   });
 });
