@@ -310,8 +310,8 @@ Deno.serve(async (req: Request) => {
       try {
         if (!serviceSupabase) {
           console.error("SUPABASE_SERVICE_ROLE_KEY is not configured; conservative AI token reservation retained");
-        } else if (actualTokens > reservedTokens) {
-          console.error("Provider usage exceeded the reservation; conservative AI token reservation retained");
+        } else if (actualTokens > 300_000) {
+          console.error("Provider usage exceeded the settlement maximum; conservative AI token reservation retained");
         } else {
           const settlement = await serviceSupabase.rpc("settle_ai_token_budget_server", {
             p_user_id: auth.user.id,
