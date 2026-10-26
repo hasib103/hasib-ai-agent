@@ -22,7 +22,7 @@ describe("Task Runner public URL analysis", () => {
 
   it("consumes request quota before page fetch, then reserves tokens before Gemini", () => {
     const requestQuotaIndex = handler.indexOf('supabase.rpc("consume_ai_request"');
-    const pageFetchIndex = handler.indexOf("fetchPublicPageContent(targetUrl)");
+    const pageFetchIndex = handler.indexOf("fetchPublicPageContent(targetUrl, {");
     const tokenReservationIndex = handler.indexOf('supabase.rpc("reserve_ai_token_budget"');
     const providerIndex = handler.indexOf("fetchGeminiWithFallback(apiKey, model, requestBody, timeoutMs)");
     expect(requestQuotaIndex).toBeGreaterThan(-1);
