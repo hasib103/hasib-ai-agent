@@ -108,7 +108,7 @@ func isPublicAddress(address netip.Addr) bool {
 }
 
 func resolvePublicAddresses(ctx context.Context, resolver ipResolver, hostname string) ([]netip.Addr, error) {
-	addresses, err := resolver.LookupNetIP(ctx, "ip", hostname)
+	addresses, err := resolver.LookupNetIP(ctx, "ip", strings.TrimSuffix(hostname, ".")+".")
 	if err != nil {
 		return nil, fmt.Errorf("public DNS lookup failed")
 	}
