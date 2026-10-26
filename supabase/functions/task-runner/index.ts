@@ -344,6 +344,11 @@ Deno.serve(async (req: Request) => {
       const apiKey = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
       if (!apiKey) throw new Error("URL analysis is not configured on the server");
       const targetUrl = validatePublicAnalysisUrl(task.payload?.url);
+      const publicUrlFetchProxyUrl = Deno.env.get("PUBLIC_URL_FETCH_PROXY_URL");
+      const publicUrlFetchProxyToken = Deno.env.get("PUBLIC_URL_FETCH_PROXY_TOKEN");
+      if (!publicUrlFetchProxyUrl || !publicUrlFetchProxyToken) {
+        throw new Error("Public URL analysis is disabled until a trusted DNS-pinning egress proxy is configured on the server");
+      }
 
       const restoreTaskAfterQuotaBlock = async (message: string) => {
         const at = new Date().toISOString();
@@ -402,7 +407,10 @@ Deno.serve(async (req: Request) => {
       }
 
       // Fetch only public, text-based pages with DNS checks, no redirects, and a strict byte cap.
-      const page = await fetchPublicPageContent(targetUrl);
+      const page = await fetchPublicPageContent(targetUrl, {
+        proxyUrl: publicUrlFetchProxyUrl,
+        proxyToken: publicUrlFetchProxyToken,
+      });
       const pagePayload = JSON.stringify({
         url: targetUrl.toString(),
         title: page.title || targetUrl.hostname,
