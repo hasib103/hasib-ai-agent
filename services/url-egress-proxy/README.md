@@ -12,12 +12,12 @@ This small server-side service fetches only public text pages for the Task Runne
 
 ## Render deployment
 
-Create a separate Render Web Service from this repository using Docker runtime, branch `main`, and Dockerfile path `services/url-egress-proxy/Dockerfile`. Set a randomly generated `PUBLIC_URL_FETCH_PROXY_TOKEN` (at least 32 characters) in the proxy service. After the service is deployed, set these server-side variables on the Hasib AI Agent Render service:
+Create a separate Render Web Service from this repository using Docker runtime, branch `main`, and Dockerfile path `services/url-egress-proxy/Dockerfile`. Set a randomly generated `PUBLIC_URL_FETCH_PROXY_TOKEN` (at least 32 characters) in the proxy service. After the service is deployed, set these as **Supabase Edge Function secrets** for the project that runs `task-runner` (project ref `qmdxpvimryxwezqmjbge`):
 
 - `PUBLIC_URL_FETCH_PROXY_URL=https://<proxy-service-host>/fetch`
 - `PUBLIC_URL_FETCH_PROXY_TOKEN=<same secret>`
 
-Do not put the token in Vite/browser variables, the APK, source code, logs, or public documentation. The Task Runner intentionally fails closed if either variable is missing. Do not enable URL analysis until the proxy is deployed, its health endpoint is reachable, authenticated requests work, and the DNS-pinning tests pass.
+The proxy service receives `PUBLIC_URL_FETCH_PROXY_TOKEN` in Render; the Task Runner receives the matching token and proxy URL in Supabase Edge Function secrets. Do not put the token in Vite/browser variables, the APK, source code, logs, or public documentation. The Task Runner intentionally fails closed if either variable is missing. Do not enable URL analysis until the proxy is deployed, its health endpoint is reachable, authenticated requests work, and the DNS-pinning tests pass.
 
 ## Local verification
 
