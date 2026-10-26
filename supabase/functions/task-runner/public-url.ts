@@ -5,8 +5,11 @@ const DNS_TIMEOUT_MS = 3_000;
 type DnsRecordType = "A" | "AAAA";
 type DnsResolver = (hostname: string, type: DnsRecordType) => Promise<string[]>;
 type PublicPageFetchOptions = {
+  // This transport is used only to call the configured trusted egress proxy, never the target URL.
   fetcher?: typeof fetch;
   resolveDns?: DnsResolver;
+  proxyUrl?: string | null;
+  proxyToken?: string | null;
 };
 
 export type PublicPageContent = {
@@ -174,34 +177,85 @@ function extractHtmlText(html: string): { title: string; text: string } {
   };
 }
 
+function validateTrustedProxyUrl(value: string): URL {
+  let proxy: URL;
+  try {
+    proxy = new URL(value);
+  } catch {
+    throw new Error("The configured public URL egress proxy URL is invalid");
+  }
+
+  const hostname = proxy.hostname.toLowerCase().replace(/\\.$/, "");
+  if (proxy.protocol !== "https:" || proxy.username || proxy.password || proxy.search || proxy.hash ||
+      (proxy.port && proxy.port !== "443") ||
+      !hostname.includes(".") || hostname.startsWith("[") ||
+      /^(?:\\d{1,3}\\.){3}\\d{1,3}$/.test(hostname) || hostname.includes(":") ||
+      hostname === "localhost" || hostname.endsWith(".localhost") ||
+      hostname.endsWith(".local") || hostname.endsWith(".internal") ||
+      hostname.endsWith(".test") || hostname.endsWith(".invalid")) {
+    throw new Error("The public URL egress proxy must be a trusted HTTPS endpoint on a DNS hostname");
+  }
+  proxy.hostname = hostname;
+  return proxy;
+}
+
 export async function fetchPublicPageContent(
   url: URL,
   options: PublicPageFetchOptions = {},
 ): Promise<PublicPageContent> {
   const resolver = options.resolveDns ?? resolveDnsOverHttps;
-  const fetcher = options.fetcher ?? fetch;
   await assertPublicDns(url.hostname, resolver);
 
-  const response = await fetcher(url.toString(), {
-    method: "GET",
-    redirect: "manual",
+  const rawProxyUrl = options.proxyUrl?.trim();
+  const proxyToken = options.proxyToken?.trim();
+  if (!rawProxyUrl || !proxyToken) {
+    throw new Error("Secure URL analysis is disabled until a trusted DNS-pinning egress proxy is configured");
+  }
+  const proxyUrl = validateTrustedProxyUrl(rawProxyUrl);
+  const fetcher = options.fetcher ?? fetch;
+
+  // Never fetch the user-supplied target directly. The trusted proxy must independently resolve
+  // all A/AAAA records, reject any non-public address, pin the selected IP for the socket while
+  // preserving TLS hostname verification, refuse redirects, and enforce the requested byte cap.
+  const response = await fetcher(proxyUrl.toString(), {
+    method: "POST",
+    redirect: "error",
     headers: {
-      accept: "text/html, text/plain, application/json, application/xhtml+xml, text/xml, application/xml, text/csv",
-      "user-agent": "HasibAI-ReadOnly-URL-Analyzer/1.0",
+      accept: "application/octet-stream",
+      authorization: "Bearer " + proxyToken,
+      "content-type": "application/json",
     },
+    body: JSON.stringify({
+      url: url.toString(),
+      maxBytes: MAX_PUBLIC_PAGE_BYTES,
+      followRedirects: false,
+      rejectNonPublicAddresses: true,
+      pinResolvedAddress: true,
+    }),
     signal: AbortSignal.timeout(8_000),
   });
 
-  if (response.status >= 300 && response.status < 400) {
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error("Trusted public URL proxy request failed (HTTP " + response.status + ")");
+  }
+
+  const upstreamStatusHeader = response.headers.get("x-upstream-status");
+  const upstreamStatus = upstreamStatusHeader === null ? NaN : Number(upstreamStatusHeader);
+  if (!Number.isInteger(upstreamStatus) || upstreamStatus < 100 || upstreamStatus > 599) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error("Trusted public URL proxy returned an invalid upstream status");
+  }
+  if (upstreamStatus >= 300 && upstreamStatus < 400) {
     await response.body?.cancel().catch(() => undefined);
     throw new Error("This URL redirects. Use the final public URL directly; redirects are not followed for safety.");
   }
-  if (!response.ok) {
+  if (upstreamStatus < 200 || upstreamStatus >= 300) {
     await response.body?.cancel().catch(() => undefined);
-    throw new Error("Public page fetch failed (HTTP " + response.status + ")");
+    throw new Error("Public page fetch failed (HTTP " + upstreamStatus + ")");
   }
 
-  const contentType = (response.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  const contentType = (response.headers.get("x-upstream-content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
   const supportedTypes = new Set([
     "text/html",
     "application/xhtml+xml",
@@ -216,7 +270,8 @@ export async function fetchPublicPageContent(
     throw new Error("This URL returns an unsupported content type; only public text/HTML pages are supported.");
   }
 
-  const declaredLength = Number(response.headers.get("content-length"));
+  const declaredLengthHeader = response.headers.get("x-upstream-content-length");
+  const declaredLength = declaredLengthHeader === null ? NaN : Number(declaredLengthHeader);
   if (Number.isFinite(declaredLength) && declaredLength > MAX_PUBLIC_PAGE_BYTES) {
     await response.body?.cancel().catch(() => undefined);
     throw new Error("The public page is larger than the 256 KB safety limit.");
