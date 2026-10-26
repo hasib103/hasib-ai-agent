@@ -1,6 +1,6 @@
 # Security Policy — Hasib AI Agent
 
-Last reviewed: 2026-10-23.
+Last reviewed: 2026-10-26.
 
 This project is a guarded MVP. Security controls are not a substitute for verification on the deployed app and target phone. Keep sensitive or production-critical workflows disabled until the complete path has been validated.
 
@@ -18,14 +18,14 @@ This project is a guarded MVP. Security controls are not a substitute for verifi
 
 - Supabase leaked-password protection is disabled. The Supabase Security Advisor reports auth_leaked_password_protection as a warning. Enable it in Supabase Auth password/security settings and re-run the advisor: https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
 - No verified device enrollment or server-enforced device binding. The open/draft biometric work does not establish server-side authorization and has not been validated on the target Oppo A58.
-- External integrations are not connected to the production app. The audited public.app_user_connections table has zero rows. The Task Runner supports generate_plan, create_memory_note, and analyze_url. URL analysis is read-only: it checks public DNS answers, refuses IP-literal/local hosts and redirects, accepts only text/HTML content, caps the fetched response at 256 KB, strips active HTML content, and sends only bounded extracted text to Gemini. It does not sign in to sites, click controls, submit forms, publish content, or run arbitrary code. DNS checks reduce SSRF risk, but the fetch API does not pin the checked IP address, so DNS rebinding is a residual risk and must be considered before enabling this handler for untrusted multi-tenant traffic. It is not an arbitrary GitHub, email, browser, or shell executor.
+- External integrations are not connected to the production app. The audited public.app_user_connections table has zero rows. The Task Runner code supports generate_plan, create_memory_note, and analyze_url, but public URL analysis now fails closed unless both PUBLIC_URL_FETCH_PROXY_URL and PUBLIC_URL_FETCH_PROXY_TOKEN are configured server-side. It never fetches the user-supplied target URL directly: the configured trusted egress proxy must independently resolve every A/AAAA answer, reject any non-public address, pin the selected IP for the socket while preserving TLS hostname verification, refuse redirects, and enforce the requested 256 KB cap. The Edge Function's DNS preflight is defense-in-depth only and does not itself prevent DNS rebinding. The proxy integration is not production-ready until an implementation meeting that contract is configured and verified. The handler accepts only text/HTML content, strips active HTML content, and sends bounded extracted text to Gemini; it does not sign in to sites, click controls, submit forms, publish content, or run arbitrary code. It is not an arbitrary GitHub, email, browser, or shell executor.
 - The token-budget migration and server handlers implement a rolling 24-hour budget of 500,000 tokens per user. This control is not live in an environment until the migration is applied there and the matching server code is deployed. Each request reserves a conservative allowance before contacting Gemini and settles against provider usage metadata when available; if usage metadata or settlement is unavailable, the reservation remains charged conservatively. This is a token ceiling, not an exact USD spending ceiling; a provider-priced monetary cap remains unimplemented.
 - Physical phone verification remains outstanding. CI and a successful Android build do not verify microphone permissions, speech-recognition support, notches, system navigation, or spoken playback on an actual device.
 - Render production and test services both currently track main. The test service is therefore not isolated from production changes.
 
 ## Credential handling
 
-- Put GEMINI_API_KEY, OAuth/provider secrets, SUPABASE_SERVICE_ROLE_KEY, and APP_USER_CONNECTION_KEY_SECRET only in the appropriate platform's server-side secret manager.
+- Put GEMINI_API_KEY, PUBLIC_URL_FETCH_PROXY_URL, PUBLIC_URL_FETCH_PROXY_TOKEN, OAuth/provider secrets, SUPABASE_SERVICE_ROLE_KEY, and APP_USER_CONNECTION_KEY_SECRET only in the appropriate platform's server-side secret manager. The proxy URL must identify an operator-controlled HTTPS egress service; never point it at a user-controlled endpoint.
 - Never use a VITE_ prefix for private credentials, and never place secrets in browser code, local storage, an APK, documentation, logs, issues, or chat.
 - Do not read, copy, or publish a local or deployed .env file.
 - If a genuine credential was committed or shared, rotate/revoke it at the provider. Removing it from the current file does not remove it from Git history.
