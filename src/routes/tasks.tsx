@@ -118,6 +118,20 @@ const filters = ["all", "running", "queued", "paused", "blocked", "done", "faile
 type GeneratedPlanStep = { title: string; priority: string; risk: string; rationale: string };
 type GeneratedPlan = { summary: string; steps: GeneratedPlanStep[] };
 
+type UrlAnalysisResult = { url: string; title: string; summary: string; key_points: string[]; limitations: string[] };
+
+function isUrlAnalysisResult(value: unknown): value is UrlAnalysisResult {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.url === "string" &&
+    typeof candidate.title === "string" &&
+    typeof candidate.summary === "string" &&
+    Array.isArray(candidate.key_points) &&
+    candidate.key_points.every((point) => typeof point === "string") &&
+    Array.isArray(candidate.limitations) &&
+    candidate.limitations.every((item) => typeof item === "string");
+}
+
 function isGeneratedPlan(value: unknown): value is GeneratedPlan {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { summary?: unknown; steps?: unknown };
@@ -161,6 +175,7 @@ function Tasks() {
   const [f, setF] = useState<(typeof filters)[number]>("all");
   const [open, setOpen] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [urlToAnalyze, setUrlToAnalyze] = useState("");
   const [runnerBusy, setRunnerBusy] = useState<string | null>(null);
   const [runnerError, setRunnerError] = useState<string | null>(null);
   const list = s.tasks.filter((t) => f === "all" || t.status === f);
@@ -232,7 +247,7 @@ function Tasks() {
         throw new Error(detail);
       }
       if (data?.status !== "done") throw new Error(data?.error || "Task did not complete successfully");
-      setStatus(id, "done", "AI plan generated and saved; no external task was executed.", data.result);
+      setStatus(id, "done", task.taskType === "analyze_url" ? "Public URL analysis completed and saved; no external action was executed." : "AI plan generated and saved; no external task was executed.", data.result);
       await refreshTaskHistory(id);
     } catch (e) {
       setRunnerError(e instanceof Error ? e.message : "Task runner failed");
@@ -247,8 +262,37 @@ function Tasks() {
 
   return (
     <>
-      <PageHeader title="Task inbox" sub="Tasks sync to Supabase. Running a supported task generates and saves an AI plan; it does not execute external actions." />
+      <PageHeader title="Task inbox" sub="Tasks sync to Supabase. Supported tasks can generate plans or summarize public URLs; they do not execute external actions." />
       <AiPlanner />
+      <section className="card-surface p-4 mb-4 space-y-3">
+        <div>
+          <h2 className="font-semibold">Analyze a public URL</h2>
+          <p className="text-xs text-muted-foreground mt-1">Create a read-only webpage analysis task. The agent summarizes page content; it does not sign in, click, submit forms, or change the website.</p>
+        </div>
+        <form className="flex flex-col sm:flex-row gap-2" onSubmit={(event) => {
+          event.preventDefault();
+          const rawUrl = urlToAnalyze.trim();
+          let parsed: URL;
+          try { parsed = new URL(rawUrl); } catch { return; }
+          if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) return;
+          set((st) => ({
+            ...st,
+            tasks: [{
+              id: uid(),
+              title: "Analyze URL: " + parsed.hostname,
+              taskType: "analyze_url",
+              payload: { url: parsed.toString() },
+              status: "queued" as TaskStatus,
+              updated: now(),
+              history: [{ at: now(), note: "Created read-only public URL analysis task." }],
+            }, ...st.tasks],
+          }), "Created public URL analysis task");
+          setUrlToAnalyze("");
+        }}>
+          <input className="field flex-1" type="url" inputMode="url" placeholder="https://example.com/article" value={urlToAnalyze} onChange={(event) => setUrlToAnalyze(event.target.value)} maxLength={2048} required />
+          <button className="btn btn-primary" type="submit" disabled={!urlToAnalyze.trim()}>Add URL task</button>
+        </form>
+      </section>
       <section className="card-surface p-4 mb-4 space-y-3">
         <div>
           <h2 className="font-semibold">Starter task prompts</h2>
@@ -335,11 +379,30 @@ function Tasks() {
                     <p className="text-xs text-muted-foreground">Plan generation only; no external action was executed.</p>
                   </div>
                 )}
+                {isUrlAnalysisResult(t.result) && (
+                  <div className="rounded-md border p-3 space-y-2">
+                    <p className="text-sm font-medium">{t.result.title}</p>
+                    <p className="text-xs text-muted-foreground break-all">{t.result.url}</p>
+                    <p className="text-sm">{t.result.summary}</p>
+                    {t.result.key_points.length > 0 && (
+                      <ul className="list-disc pl-5 space-y-1 text-sm">
+                        {t.result.key_points.map((point, index) => <li key={index}>{point}</li>)}
+                      </ul>
+                    )}
+                    {t.result.limitations.length > 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        <p className="font-medium">Access limitations</p>
+                        <ul className="list-disc pl-5">{t.result.limitations.map((item, index) => <li key={index}>{item}</li>)}</ul>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">Read-only analysis; the page was not changed.</p>
+                  </div>
+                )}
                 <ol className="space-y-1.5 text-sm">
                   {t.history.map((h, i) => <li key={h.id ?? i} className="flex gap-2"><span className="text-xs font-mono text-muted-foreground w-16 shrink-0">{timeAgo(h.at)}</span>{h.note}</li>)}
                 </ol>
                 <div className="flex flex-wrap gap-2">
-                  {t.status === "queued" && <button className="btn btn-primary" disabled={runnerBusy !== null} onClick={() => void runTask(t.id)}>{runnerBusy === t.id ? "Generating plan…" : "Generate plan securely"}</button>}
+                  {t.status === "queued" && <button className="btn btn-primary" disabled={runnerBusy !== null} onClick={() => void runTask(t.id)}>{runnerBusy === t.id ? (t.taskType === "analyze_url" ? "Analyzing URL…" : "Generating plan…") : (t.taskType === "analyze_url" ? "Analyze URL securely" : "Generate plan securely")}</button>}
                   {t.status === "running" && <button className="btn btn-ghost" onClick={() => setStatus(t.id, "paused", "Paused by Hasib")}>Pause</button>}
                   {["paused", "blocked", "failed"].includes(t.status) && <button className="btn btn-primary" onClick={() => setStatus(t.id, "queued", "Requeued by Hasib; generate and save a new AI plan when ready")}>Requeue</button>}
                   <button className="btn btn-danger" onClick={async () => {

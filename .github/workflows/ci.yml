@@ -29,8 +29,27 @@ jobs:
         with:
           deno-version: v2.x
 
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.x"
+
+      - name: Test DNS-pinning URL egress proxy
+        working-directory: services/url-egress-proxy
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            gofmt -d .
+            exit 1
+          fi
+          go vet ./...
+          go test -race ./...
+          go build ./...
+
       - name: Type-check Task Runner Edge Function
         run: deno check supabase/functions/task-runner/index.ts
+
+      - name: Test Task Runner public URL validation
+        run: deno test supabase/functions/task-runner/public-url.test.ts
 
       - name: Verify Task Runner CORS allowlist
         shell: bash

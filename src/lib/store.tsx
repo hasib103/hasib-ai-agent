@@ -3,8 +3,8 @@ import { supabase } from "@/lib/supabase";
 import type { Json } from "@/integrations/supabase/types";
 
 export type TaskStatus = "queued" | "running" | "paused" | "blocked" | "done" | "failed";
-export type TaskPayload = { request?: string; title?: string; body?: string; tags?: string[] };
-export type Task = { id: string; title: string; status: TaskStatus; updated: string; history: { id?: string; at: string; note: string }[]; taskType?: "generate_plan" | "create_memory_note"; payload?: TaskPayload; result?: Json | null; demo?: boolean };
+export type TaskPayload = { request?: string; url?: string; title?: string; body?: string; tags?: string[] };
+export type Task = { id: string; title: string; status: TaskStatus; updated: string; history: { id?: string; at: string; note: string }[]; taskType?: "generate_plan" | "create_memory_note" | "analyze_url"; payload?: TaskPayload; result?: Json | null; demo?: boolean };
 export type Note = { id: string; title: string; body: string; tags: string[]; updated: string; demo?: boolean };
 export type Approval = { id: string; action: string; category: "publish" | "delete" | "spend" | "security" | "message"; detail: string; requested: string; status: "pending" | "approved" | "rejected"; demo?: boolean };
 export type LogEntry = { id: string; at: string; actor: string; event: string; demo?: boolean };
