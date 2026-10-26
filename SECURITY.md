@@ -25,7 +25,7 @@ This project is a guarded MVP. Security controls are not a substitute for verifi
 
 ## Credential handling
 
-- Put GEMINI_API_KEY, PUBLIC_URL_FETCH_PROXY_URL, PUBLIC_URL_FETCH_PROXY_TOKEN, OAuth/provider secrets, SUPABASE_SERVICE_ROLE_KEY, and APP_USER_CONNECTION_KEY_SECRET only in the appropriate platform's server-side secret manager. The proxy URL must identify an operator-controlled HTTPS egress service; never point it at a user-controlled endpoint.
+- Put GEMINI_API_KEY, OAuth/provider secrets, SUPABASE_SERVICE_ROLE_KEY, and APP_USER_CONNECTION_KEY_SECRET only in the appropriate platform's server-side secret manager. Set PUBLIC_URL_FETCH_PROXY_TOKEN in the Render proxy service and set both PUBLIC_URL_FETCH_PROXY_URL and the matching token as Supabase Edge Function secrets for task-runner. The proxy URL must identify an operator-controlled HTTPS egress service; never point it at a user-controlled endpoint.
 - Never use a VITE_ prefix for private credentials, and never place secrets in browser code, local storage, an APK, documentation, logs, issues, or chat.
 - Do not read, copy, or publish a local or deployed .env file.
 - If a genuine credential was committed or shared, rotate/revoke it at the provider. Removing it from the current file does not remove it from Git history.
