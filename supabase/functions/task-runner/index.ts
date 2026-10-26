@@ -591,7 +591,8 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Task execution failed";
     const failedAt = new Date().toISOString();
-    const nextStatus = task.attempt_count < task.max_attempts ? "queued" : "failed";
+    const configurationBlocked = message.includes("Public URL analysis is disabled until a trusted DNS-pinning egress proxy is configured on the server");
+    const nextStatus = configurationBlocked ? "blocked" : task.attempt_count < task.max_attempts ? "queued" : "failed";
     const { error: stateError } = await supabase.from("tasks").update({
       status: nextStatus,
       last_error: message,
@@ -600,7 +601,12 @@ Deno.serve(async (req: Request) => {
     }).eq("id", task.id).eq("user_id", auth.user.id).eq("status", "running");
     if (stateError) console.error("Failed to persist task failure state", stateError.message);
 
-    const historyNote = `Attempt ${task.attempt_count}/${task.max_attempts} failed; ${nextStatus === "queued" ? "task queued for retry" : "maximum attempts reached"}: ${message}`;
+    const outcome = nextStatus === "queued"
+      ? "task queued for retry"
+      : nextStatus === "blocked"
+        ? "task blocked until server configuration is completed"
+        : "maximum attempts reached";
+    const historyNote = `Attempt ${task.attempt_count}/${task.max_attempts} failed; ${outcome}: ${message}`;
     const [historyWrite, activityWrite] = await Promise.all([
       supabase.from("task_history").insert({
         task_id: task.id,
