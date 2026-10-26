@@ -18,10 +18,12 @@ type fakeResolver struct {
 	responses [][]netip.Addr
 	err       error
 	calls     int
+	lastHost  string
 }
 
-func (r *fakeResolver) LookupNetIP(_ context.Context, _ string, _ string) ([]netip.Addr, error) {
+func (r *fakeResolver) LookupNetIP(_ context.Context, _ string, host string) ([]netip.Addr, error) {
 	r.calls++
+	r.lastHost = host
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -136,6 +138,9 @@ func TestPinnedDialUsesValidatedIPWithoutSecondDNSLookup(t *testing.T) {
 	}
 	if resolver.calls != 1 {
 		t.Fatalf("expected exactly one DNS lookup for the connection, got %d", resolver.calls)
+	}
+	if resolver.lastHost != "example.com." {
+		t.Fatalf("expected an absolute DNS name to avoid search-domain expansion, got %q", resolver.lastHost)
 	}
 	if dialAddress != "93.184.216.34:443" {
 		t.Fatalf("expected a pinned IP literal, got %q", dialAddress)
