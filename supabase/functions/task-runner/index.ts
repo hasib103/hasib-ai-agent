@@ -248,7 +248,7 @@ Deno.serve(async (req: Request) => {
         }, 429);
       }
 
-      const reservedTokens = Math.ceil(requestBody.length * 2) + 1500;
+      const reservedTokens = new TextEncoder().encode(requestBody).length + 1500;
       if (reservedTokens > 150000) {
         const message = "AI planner request is too large for the token budget; shorten the task request.";
         await restoreTaskAfterQuotaBlock(message);
