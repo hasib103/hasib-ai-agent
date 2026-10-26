@@ -5,7 +5,8 @@ const config: CapacitorConfig = {
   appName: "Hasib AI Agent",
   webDir: "public",
   server: {
-    url: "https://hasib-ai-agent-test.onrender.com",
+    // The installable APK should load the production app, not the test service.
+    url: "https://hasib-ai-agent.onrender.com",
     cleartext: false,
     androidScheme: "https",
   },
