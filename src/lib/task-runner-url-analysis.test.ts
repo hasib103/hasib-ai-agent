@@ -37,6 +37,8 @@ describe("Task Runner public URL analysis", () => {
   });
 
   it("settles usage only through the server-role RPC and never executes page actions", () => {
+    expect(source).toContain('const configurationBlocked = message.includes("Public URL analysis is disabled until a trusted DNS-pinning egress proxy is configured on the server")');
+    expect(source).toContain('task blocked until server configuration is completed');
     expect(handler).toContain('serviceSupabase.rpc("settle_ai_token_budget_server"');
     expect(handler).toContain("actualTokens > reservedTokens");
     expect(handler).toContain("result = { url: targetUrl.toString()");
