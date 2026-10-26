@@ -24,12 +24,14 @@ function settleRpc(data: unknown, error: unknown | null = null) {
 }
 
 describe("AI token budget", () => {
-  it("reserves a conservative multilingual request estimate", () => {
-    expect(estimateReservedAiTokens(100, 1400)).toBe(1600);
+  it("reserves UTF-8 request bytes plus the maximum generated tokens", () => {
+    expect(estimateReservedAiTokens(100, 1400)).toBe(1500);
+    const bengaliBytes = new TextEncoder().encode("বাংলা ভাষা").length;
+    expect(estimateReservedAiTokens(bengaliBytes, 100)).toBe(bengaliBytes + 100);
   });
 
   it("rejects an oversized reservation before contacting the provider", () => {
-    expect(() => estimateReservedAiTokens(80_000, 1400)).toThrow("too large for the per-request token budget");
+    expect(() => estimateReservedAiTokens(148_601, 1400)).toThrow("too large for the per-request token budget");
   });
 
   it("accepts an atomic server-side reservation", async () => {
