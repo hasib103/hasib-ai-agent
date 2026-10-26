@@ -114,7 +114,7 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
     const tokenReservation = await reserveAiTokenBudget(
       data.accessToken,
       "chat",
-      estimateReservedAiTokens(requestBody.length, 1400),
+      estimateReservedAiTokens(new TextEncoder().encode(requestBody).length, 1400),
     );
 
     // Keep a strict overall budget so transient provider failures do not make the
