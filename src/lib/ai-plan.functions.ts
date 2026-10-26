@@ -93,7 +93,7 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
     const tokenReservation = await reserveAiTokenBudget(
       data.accessToken,
       "planner",
-      estimateReservedAiTokens(requestBody.length, 1800),
+      estimateReservedAiTokens(new TextEncoder().encode(requestBody).length, 1800),
     );
 
     // Gemini may return HTTP 503 during temporary overload. Retry transient
