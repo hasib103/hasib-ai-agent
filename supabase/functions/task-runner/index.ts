@@ -406,7 +406,7 @@ Deno.serve(async (req: Request) => {
         return json(req, { task_id: task.id, status: "queued", error: message, retry_after_seconds: retryAfter }, 429);
       }
 
-      // Fetch only public, text-based pages with DNS checks, no redirects, and a strict byte cap.
+      // Fetch only through the configured DNS-pinning egress proxy; never connect directly to the target host.
       const page = await fetchPublicPageContent(targetUrl, {
         proxyUrl: publicUrlFetchProxyUrl,
         proxyToken: publicUrlFetchProxyToken,
