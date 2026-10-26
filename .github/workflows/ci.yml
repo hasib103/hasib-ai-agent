@@ -37,7 +37,10 @@ jobs:
       - name: Test DNS-pinning URL egress proxy
         working-directory: services/url-egress-proxy
         run: |
-          gofmt -d .
+          if [ -n "$(gofmt -l .)" ]; then
+            gofmt -d .
+            exit 1
+          fi
           go vet ./...
           go test -race ./...
           go build ./...
