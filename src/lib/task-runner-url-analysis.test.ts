@@ -40,11 +40,11 @@ describe("Task Runner public URL analysis", () => {
     expect(source).toContain('const configurationBlocked = message.includes("Public URL analysis is disabled until a trusted DNS-pinning egress proxy is configured on the server")');
     expect(source).toContain('task blocked until server configuration is completed');
     expect(handler).toContain('serviceSupabase.rpc("settle_ai_token_budget_server"');
-    expect(handler).toContain("actualTokens > reservedTokens");
+    expect(handler).toContain("actualTokens > 300_000");
     expect(handler).toContain("result = { url: targetUrl.toString()");
     expect(handler).not.toContain("fetch(targetUrl");
     expect(handler).not.toContain("window.location");
     expect(handler).not.toContain("form.submit");
-    expect(handler).toContain("URL analysis usage exceeded the reservation");
+    expect(handler).toContain("URL analysis usage exceeded the settlement maximum");
   });
 });
