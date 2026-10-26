@@ -185,11 +185,11 @@ function validateTrustedProxyUrl(value: string): URL {
     throw new Error("The configured public URL egress proxy URL is invalid");
   }
 
-  const hostname = proxy.hostname.toLowerCase().replace(/\\.$/, "");
+  const hostname = proxy.hostname.toLowerCase().replace(/\.$/, "");
   if (proxy.protocol !== "https:" || proxy.username || proxy.password || proxy.search || proxy.hash ||
       (proxy.port && proxy.port !== "443") ||
       !hostname.includes(".") || hostname.startsWith("[") ||
-      /^(?:\\d{1,3}\\.){3}\\d{1,3}$/.test(hostname) || hostname.includes(":") ||
+      /^(?:\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.includes(":") ||
       hostname === "localhost" || hostname.endsWith(".localhost") ||
       hostname.endsWith(".local") || hostname.endsWith(".internal") ||
       hostname.endsWith(".test") || hostname.endsWith(".invalid")) {
