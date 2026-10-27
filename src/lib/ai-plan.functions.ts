@@ -93,7 +93,7 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
     const tokenReservation = await reserveAiTokenBudget(
       data.accessToken,
       "planner",
-      estimateReservedAiTokens(requestBody.length, 1800),
+      estimateReservedAiTokens(new TextEncoder().encode(requestBody).length, 1800),
     );
 
     // Gemini may return HTTP 503 during temporary overload. Retry transient
@@ -206,7 +206,7 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
       ? reportedTokenCount
       : tokenReservation.reservedTokens;
     try {
-      await settleAiTokenBudget(data.accessToken, tokenReservation.reservationId, actualTokens);
+      await settleAiTokenBudget(authData.user.id, tokenReservation.reservationId, actualTokens);
     } catch (settlementError) {
       // The still-reserved amount remains charged for the rolling window if settlement fails.
       console.error("AI token budget settlement failed; conservative reservation retained", settlementError);
