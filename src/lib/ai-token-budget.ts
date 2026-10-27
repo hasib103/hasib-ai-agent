@@ -7,7 +7,7 @@ export const MAX_AI_TOKEN_RESERVATION = 150_000;
 
 type RpcResponse = { data: unknown; error: unknown | null };
 type ReserveRpcArgs = { p_kind: AiTokenBudgetKind; p_reserved_tokens: number };
-type SettleRpcArgs = { p_reservation_id: string; p_actual_tokens: number };
+type SettleRpcArgs = { p_user_id: string; p_reservation_id: string; p_actual_tokens: number };
 type ReserveRpcCall = (args: ReserveRpcArgs) => PromiseLike<RpcResponse>;
 type SettleRpcCall = (args: SettleRpcArgs) => PromiseLike<RpcResponse>;
 
@@ -35,13 +35,14 @@ export class AiTokenBudgetExceededError extends Error {
   }
 }
 
-export function estimateReservedAiTokens(requestBodyCharacters: number, maxOutputTokens: number): number {
-  if (!Number.isSafeInteger(requestBodyCharacters) || requestBodyCharacters < 0 ||
+export function estimateReservedAiTokens(requestBodyBytes: number, maxOutputTokens: number): number {
+  if (!Number.isSafeInteger(requestBodyBytes) || requestBodyBytes < 0 ||
       !Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 0) {
     throw new Error("Invalid AI token reservation estimate.");
   }
-  // Two token units per UTF-16 code unit is deliberately conservative for multilingual prompts.
-  const reserved = Math.max(1, Math.ceil(requestBodyCharacters * 2) + maxOutputTokens);
+  // UTF-8 bytes conservatively bound input token count for multilingual text; maxOutputTokens
+  // bounds generated tokens. Callers must pass TextEncoder().encode(requestBody).length.
+  const reserved = Math.max(1, requestBodyBytes + maxOutputTokens);
   if (reserved > MAX_AI_TOKEN_RESERVATION) {
     throw new Error("This AI request is too large for the per-request token budget. Shorten the prompt or conversation history.");
   }
@@ -87,15 +88,22 @@ export async function reserveAiTokenBudgetWithRpc(
 
 export async function settleAiTokenBudgetWithRpc(
   rpcCall: SettleRpcCall,
+  userId: string,
   reservationId: string,
   actualTokens: number,
 ): Promise<void> {
-  if (!reservationId || !Number.isSafeInteger(actualTokens) || actualTokens < 0 || actualTokens > 300_000) {
+  if (!userId || userId.length > 100 ||
+      !reservationId || reservationId.length < 16 ||
+      !Number.isSafeInteger(actualTokens) || actualTokens < 0 || actualTokens > 300_000) {
     throw new Error("Invalid AI token settlement.");
   }
   let response: RpcResponse;
   try {
-    response = await rpcCall({ p_reservation_id: reservationId, p_actual_tokens: actualTokens });
+    response = await rpcCall({
+      p_user_id: userId,
+      p_reservation_id: reservationId,
+      p_actual_tokens: actualTokens,
+    });
   } catch {
     throw new Error("AI token usage could not be settled; the conservative reservation remains charged.");
   }
@@ -124,14 +132,25 @@ export async function reserveAiTokenBudget(
   );
 }
 
+function serviceRoleClient() {
+  const serviceRoleKey = process.env["SUPABASE_SERVICE_ROLE_KEY"];
+  if (!serviceRoleKey) {
+    throw new Error("Server-side AI token settlement is not configured. Set SUPABASE_SERVICE_ROLE_KEY on the app server.");
+  }
+  return createClient(supabase.supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 export async function settleAiTokenBudget(
-  accessToken: string,
+  userId: string,
   reservationId: string,
   actualTokens: number,
 ): Promise<void> {
-  const client = authenticatedClient(accessToken);
+  const client = serviceRoleClient();
   await settleAiTokenBudgetWithRpc(
-    (args) => client.rpc("settle_ai_token_budget", args),
+    (args) => client.rpc("settle_ai_token_budget_server", args),
+    userId,
     reservationId,
     actualTokens,
   );
