@@ -70,5 +70,8 @@ describe("server-side AI token settlement", () => {
     expect(migration).toContain("SET search_path TO ''");
     expect(migration).toContain("REVOKE ALL ON FUNCTION public.settle_ai_token_budget_server");
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.settle_ai_token_budget_server");
+    expect(migration).toContain("ALTER FUNCTION public.settle_ai_token_budget(uuid, integer) SET search_path TO ''");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.settle_ai_token_budget(uuid, integer)");
+    expect(migration).toContain("FROM PUBLIC, anon, authenticated, service_role");
   });
 });
