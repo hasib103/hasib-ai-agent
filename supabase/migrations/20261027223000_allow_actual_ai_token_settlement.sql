@@ -43,3 +43,9 @@ REVOKE ALL ON FUNCTION public.settle_ai_token_budget_server(uuid, uuid, integer)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.settle_ai_token_budget_server(uuid, uuid, integer)
   TO service_role;
+
+-- Retire the legacy browser-callable settlement path. It trusted caller-supplied
+-- usage and could let an authenticated client under-report its own token usage.
+ALTER FUNCTION public.settle_ai_token_budget(uuid, integer) SET search_path TO '';
+REVOKE ALL ON FUNCTION public.settle_ai_token_budget(uuid, integer)
+  FROM PUBLIC, anon, authenticated, service_role;
