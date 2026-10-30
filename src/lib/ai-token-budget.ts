@@ -132,26 +132,40 @@ export async function reserveAiTokenBudget(
   );
 }
 
-function serviceRoleClient() {
-  const serviceRoleKey = process.env["SUPABASE_SERVICE_ROLE_KEY"];
-  if (!serviceRoleKey) {
-    throw new Error("Server-side AI token settlement is not configured. Set SUPABASE_SERVICE_ROLE_KEY on the app server.");
-  }
-  return createClient(supabase.supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
 export async function settleAiTokenBudget(
-  userId: string,
+  accessToken: string,
   reservationId: string,
   actualTokens: number,
 ): Promise<void> {
-  const client = serviceRoleClient();
-  await settleAiTokenBudgetWithRpc(
-    (args) => client.rpc("settle_ai_token_budget_server", args),
-    userId,
-    reservationId,
-    actualTokens,
-  );
+  if (!accessToken || accessToken.length > 8192 ||
+      !reservationId || reservationId.length < 16 ||
+      !Number.isSafeInteger(actualTokens) || actualTokens < 0 || actualTokens > 300_000) {
+    throw new Error("Invalid AI token settlement.");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(
+      supabase.supabaseUrl + "/functions/v1/settle-ai-token-budget",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabase.supabaseKey,
+          Authorization: "Bearer " + accessToken,
+        },
+        body: JSON.stringify({
+          reservation_id: reservationId,
+          actual_tokens: actualTokens,
+        }),
+      },
+    );
+  } catch {
+    throw new Error("AI token usage could not be settled; the conservative reservation remains charged.");
+  }
+
+  const payload = await response.json().catch(() => null) as { settled?: unknown } | null;
+  if (!response.ok || payload?.settled !== true) {
+    throw new Error("AI token usage could not be settled; the conservative reservation remains charged.");
+  }
 }
