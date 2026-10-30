@@ -151,11 +151,18 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
 
     // Retry exhaustion on an overloaded primary model should not immediately
     // block the user; try a supported secondary Flash model once, within the same total budget.
-    const fallbackRemainingMs = deadlineAt - Date.now();
-    if (response && retryableStatuses.has(response.status) && model !== "gemini-3.6-flash" && fallbackRemainingMs > 0) {
+    const fallbackModels = [
+      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+    ].filter((candidate) => candidate !== model);
+    for (const fallbackModel of fallbackModels) {
+      if (!response || !retryableStatuses.has(response.status)) break;
+      const remainingMs = deadlineAt - Date.now();
+      if (remainingMs <= 1_000) break;
       try {
         response = await fetch(
-          "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+          `https://generativelanguage.googleapis.com/v1beta/models/${fallbackModel}:generateContent`,
           {
             method: "POST",
             headers: {
@@ -163,14 +170,20 @@ export const generateTaskPlan = createServerFn({ method: "POST" })
               "x-goog-api-key": apiKey,
             },
             body: requestBody,
-            signal: AbortSignal.timeout(fallbackRemainingMs),
+            signal: AbortSignal.timeout(Math.min(12_000, remainingMs)),
           },
         );
+        if (response.ok || !retryableStatuses.has(response.status)) break;
+        const retryAfter = Number(response.headers.get("retry-after"));
+        await response.body?.cancel().catch(() => undefined);
+        if (Number.isFinite(retryAfter) && retryAfter > 0) {
+          await new Promise((resolve) => setTimeout(resolve, Math.min(retryAfter * 1000, 1_000, Math.max(0, deadlineAt - Date.now()))));
+        }
       } catch (error) {
         if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
-          throw new Error(timeoutMessage);
+          break;
         }
-        // Keep the original response so the caller gets a useful provider status.
+        // Keep the last provider response so the caller gets a useful status.
       }
     }
     if (!response) {
