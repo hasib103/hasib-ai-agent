@@ -10,6 +10,7 @@ const migration = readFileSync(
 const budgetSource = readFileSync(resolve(process.cwd(), "src/lib/ai-token-budget.ts"), "utf8");
 const plannerSource = readFileSync(resolve(process.cwd(), "src/lib/ai-plan.functions.ts"), "utf8");
 const voiceSource = readFileSync(resolve(process.cwd(), "src/lib/voice-chat.functions.ts"), "utf8");
+const settlementFunctionSource = readFileSync(resolve(process.cwd(), "supabase/functions/settle-ai-token-budget/index.ts"), "utf8");
 
 const userId = "00000000-0000-0000-0000-000000000001";
 const reservationId = "00000000-0000-0000-0000-000000000002";
@@ -54,11 +55,14 @@ describe("server-side AI token settlement", () => {
   });
 
   it("uses the server-role key and never calls the revoked browser settlement RPC", () => {
-    expect(budgetSource).toContain('process.env["SUPABASE_SERVICE_ROLE_KEY"]');
-    expect(budgetSource).toContain('client.rpc("settle_ai_token_budget_server", args)');
-    expect(budgetSource).not.toContain('client.rpc("settle_ai_token_budget", args)');
-    expect(plannerSource).toContain("settleAiTokenBudget(authData.user.id, tokenReservation.reservationId, actualTokens)");
-    expect(voiceSource).toContain("settleAiTokenBudget(authData.user.id, tokenReservation.reservationId, actualTokens)");
+    expect(budgetSource).toContain("/functions/v1/settle-ai-token-budget");
+    expect(budgetSource).toContain('Authorization: "Bearer " + accessToken');
+    expect(budgetSource).not.toContain('process.env["SUPABASE_SERVICE_ROLE_KEY"]');
+    expect(settlementFunctionSource).toContain('Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")');
+    expect(settlementFunctionSource).toContain("userClient.auth.getUser(accessToken)");
+    expect(settlementFunctionSource).toContain('serviceClient.rpc("settle_ai_token_budget_server"');
+    expect(plannerSource).toContain("settleAiTokenBudget(data.accessToken, tokenReservation.reservationId, actualTokens)");
+    expect(voiceSource).toContain("settleAiTokenBudget(data.accessToken, tokenReservation.reservationId, actualTokens)");
     expect(voiceSource).toContain("google_search");
     expect(voiceSource).not.toContain("url_context");
     expect(voiceSource).toContain("Task Inbox > Analyze a public URL");
