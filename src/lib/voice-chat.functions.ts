@@ -149,29 +149,42 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
       await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, Math.max(0, deadline - Date.now()))));
     }
 
-    // A single quick fallback is reserved for transient provider failures.
-    if (response && retryableStatuses.has(response.status) && model !== "gemini-3.6-flash") {
+    // Try stable, cost-efficient fallback models when the primary model is rate-limited or overloaded.
+    const fallbackModels = [
+      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+    ].filter((candidate) => candidate !== model);
+    for (const fallbackModel of fallbackModels) {
+      if (!response || !retryableStatuses.has(response.status)) break;
       const remainingMs = deadline - Date.now();
-      if (remainingMs > 1_000) {
-        try {
-          response = await fetch(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-              body: requestBody,
-              signal: AbortSignal.timeout(Math.min(12_000, remainingMs)),
-            },
-          );
-        } catch {
-          // Preserve the primary response so the user receives a meaningful provider error.
+      if (remainingMs <= 1_000) break;
+      try {
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${fallbackModel}:generateContent`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+            body: requestBody,
+            signal: AbortSignal.timeout(Math.min(10_000, remainingMs)),
+          },
+        );
+        if (response.ok || !retryableStatuses.has(response.status)) break;
+        const retryAfter = Number(response.headers.get("retry-after"));
+        await response.body?.cancel().catch(() => undefined);
+        if (Number.isFinite(retryAfter) && retryAfter > 0) {
+          await new Promise((resolve) => setTimeout(resolve, Math.min(retryAfter * 1000, 800, Math.max(0, deadline - Date.now()))));
         }
+      } catch {
+        // Preserve the last provider response so the user receives an accurate error.
       }
     }
 
     if (!response) throw new Error("AI did not return a response within the time limit. Please try again.");
     if (!response.ok) {
-      if (response.status === 429) throw new Error("AI rate limit reached. Wait a little and try again.");
+      const providerDetail = await response.clone().text().catch(() => "");
+      console.error("Gemini Voice Chat request failed", response.status, providerDetail.slice(0, 500));
+      if (response.status === 429) throw new Error("AI rate limit reached across available Gemini models. Check the Gemini project quota or retry after it resets.");
       if (response.status === 401 || response.status === 403) {
         throw new Error("The AI provider rejected its server API key. Check the deployment secret.");
       }
