@@ -64,9 +64,12 @@ async function fetchGeminiWithFallback(
   requestBody: string,
   timeoutMs: number,
 ): Promise<Response> {
-  const models = configuredModel === "gemini-3.6-flash"
-    ? [configuredModel]
-    : [configuredModel, "gemini-3.6-flash"];
+  const models = [...new Set([
+    configuredModel,
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+  ])];
   let lastResponse: Response | undefined;
   let lastError: unknown;
 

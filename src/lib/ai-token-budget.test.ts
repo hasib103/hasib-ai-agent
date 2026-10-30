@@ -17,19 +17,21 @@ function reserveRpc(data: unknown, error: unknown | null = null) {
 }
 
 function settleRpc(data: unknown, error: unknown | null = null) {
-  return vi.fn(async (_args: { p_reservation_id: string; p_actual_tokens: number }): Promise<RpcResponse> => ({
+  return vi.fn(async (_args: { p_user_id: string; p_reservation_id: string; p_actual_tokens: number }): Promise<RpcResponse> => ({
     data,
     error,
   }));
 }
 
 describe("AI token budget", () => {
-  it("reserves a conservative multilingual request estimate", () => {
-    expect(estimateReservedAiTokens(100, 1400)).toBe(1600);
+  it("reserves UTF-8 request bytes plus the maximum generated tokens", () => {
+    expect(estimateReservedAiTokens(100, 1400)).toBe(1500);
+    const bengaliBytes = new TextEncoder().encode("বাংলা ভাষা").length;
+    expect(estimateReservedAiTokens(bengaliBytes, 100)).toBe(bengaliBytes + 100);
   });
 
   it("rejects an oversized reservation before contacting the provider", () => {
-    expect(() => estimateReservedAiTokens(80_000, 1400)).toThrow("too large for the per-request token budget");
+    expect(() => estimateReservedAiTokens(148_601, 1400)).toThrow("too large for the per-request token budget");
   });
 
   it("accepts an atomic server-side reservation", async () => {
@@ -65,15 +67,16 @@ describe("AI token budget", () => {
 
   it("settles actual provider token usage", async () => {
     const rpc = settleRpc(true);
-    await expect(settleAiTokenBudgetWithRpc(rpc, "9c41da87-0231-4abf-9c41-da8702314abf", 1200)).resolves.toBeUndefined();
+    await expect(settleAiTokenBudgetWithRpc(rpc, "00000000-0000-0000-0000-000000000001", "9c41da87-0231-4abf-9c41-da8702314abf", 1200)).resolves.toBeUndefined();
     expect(rpc).toHaveBeenCalledWith({
+      p_user_id: "00000000-0000-0000-0000-000000000001",
       p_reservation_id: "9c41da87-0231-4abf-9c41-da8702314abf",
       p_actual_tokens: 1200,
     });
   });
 
   it("retains the conservative reservation when settlement fails", async () => {
-    await expect(settleAiTokenBudgetWithRpc(settleRpc(false), "9c41da87-0231-4abf-9c41-da8702314abf", 1200))
+    await expect(settleAiTokenBudgetWithRpc(settleRpc(false), "00000000-0000-0000-0000-000000000001", "9c41da87-0231-4abf-9c41-da8702314abf", 1200))
       .rejects.toThrow("conservative reservation remains charged");
   });
 });
