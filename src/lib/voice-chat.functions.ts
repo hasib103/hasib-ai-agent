@@ -200,10 +200,16 @@ export const askVoiceAssistant = createServerFn({ method: "POST" })
     if (response?.status === 429 && useGoogleSearch && lastRateLimit?.category === "search_grounding") {
       const remainingMs = deadline - Date.now();
       if (remainingMs > 1_000) {
-        const requestWithoutSearch = { ...requestPayload } as Record<string, unknown>;
+        const requestWithoutSearch = {
+          ...requestPayload,
+          systemInstruction: {
+            parts: [{
+              text: buildSystemInstruction(data.language, data.profile, data.customInstructions, false),
+            }],
+          },
+        } as Record<string, unknown>;
         delete requestWithoutSearch["tools"];
         try {
-          responseModel = responseModel || model;
           response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(responseModel)}:generateContent`,
             {
