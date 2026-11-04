@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { fetchPublicPageContent, validatePublicAnalysisUrl } from "./public-url.ts";
-import { describeGeminiRateLimit, inspectGeminiRateLimit } from "../../../src/lib/gemini-rate-limit.ts";
+import { describeGeminiRateLimit, inspectGeminiRateLimit } from "./gemini-rate-limit.ts";
 
 const allowedOrigins = new Set([
   "https://hasib-ai-agent.onrender.com",
