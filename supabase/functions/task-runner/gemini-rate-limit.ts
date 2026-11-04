@@ -62,7 +62,7 @@ export function inspectGeminiRateLimit(
   const source = [message, ...quotaIds, ...quotaMetrics].join(" ").toLowerCase();
   const retryInfo = details.map(asRecord)
     .find((item) => typeof item?.["@type"] === "string" && item["@type"].endsWith("RetryInfo"));
-  const retryAfterSeconds = parseRetryDelay(retryInfo?.retryDelay) ?? parseRetryAfterHeader(retryAfterHeader);
+  const retryAfterSeconds = parseRetryDelay(retryInfo?.retryDelay) ?? parseRetryAfterHeader(retryAfterHeader ?? null);
 
   let category: GeminiQuotaCategory = "unknown";
   if (/grounding|google[_-]?search|search.*(?:request|quota)/i.test(source)) {
