@@ -27,6 +27,18 @@ describe("Task Runner AI quota enforcement", () => {
     expect(source).not.toContain('supabase.rpc("settle_ai_token_budget"');
   });
 
+  it("loads the URL proxy secret through the service-role Vault RPC", () => {
+    expect(source).toContain('serviceSupabase.rpc("get_public_url_fetch_proxy_config")');
+    expect(source).toContain("public_url_fetch_proxy_token");
+  });
+
+  it("releases unused reservations and requeues provider 429 responses without consuming an attempt", () => {
+    expect(source).toContain("releaseProviderQuotaReservation");
+    expect(source).toContain("inspectGeminiRateLimit");
+    expect(source).toContain("Task remains queued.");
+    expect(source).toContain("URL analysis remains queued.");
+  });
+
   it("requeues quota-blocked tasks without consuming a retry attempt", () => {
     expect(source).toContain('status: "queued"');
     expect(source).toContain("attempt_count: queuedTask.attempt_count");
