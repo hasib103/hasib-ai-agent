@@ -88,13 +88,6 @@ export function inspectGeminiRateLimit(
   return { category, quotaIds, quotaMetrics, model, retryAfterSeconds };
 }
 
-    category = "per_minute_quota";
-  } else if (/capacity|overload|temporarily unavailable/i.test(source)) {
-    category = "provider_capacity";
-  }
-
-  return { category, quotaIds, quotaMetrics, model, retryAfterSeconds };
-}
 
 export function shouldUseGoogleSearch(message: string): boolean {
   const query = message.normalize("NFKC").toLowerCase();
