@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { fetchPublicPageContent, validatePublicAnalysisUrl } from "./public-url.ts";
+import { describeGeminiRateLimit, inspectGeminiRateLimit } from "../../../src/lib/gemini-rate-limit.ts";
 
 const allowedOrigins = new Set([
   "https://hasib-ai-agent.onrender.com",
@@ -91,6 +92,7 @@ async function fetchGeminiWithFallback(
         );
         lastResponse = response;
         if (response.ok || !retryableProviderStatuses.has(response.status)) return response;
+        if (modelIndex === models.length - 1) return response;
 
         const retryAfter = Number(response.headers.get("retry-after"));
         await response.body?.cancel().catch(() => undefined);
@@ -145,6 +147,25 @@ Deno.serve(async (req: Request) => {
 
   const { data: auth, error: authError } = await supabase.auth.getUser(token);
   if (authError || !auth.user) return json(req, { error: "Invalid or expired session" }, 401);
+
+  const releaseProviderQuotaReservation = async (reservationId: string) => {
+    if (!serviceSupabase) {
+      console.error("SUPABASE_SERVICE_ROLE_KEY is not configured; provider 429 reservation retained");
+      return;
+    }
+    try {
+      const settlement = await serviceSupabase.rpc("settle_ai_token_budget_server", {
+        p_user_id: auth.user.id,
+        p_reservation_id: reservationId,
+        p_actual_tokens: 0,
+      });
+      if (settlement.error || settlement.data !== true) {
+        console.error("Unable to release unused AI token reservation after provider 429", settlement.error?.message);
+      }
+    } catch (settlementError) {
+      console.error("Unable to release unused AI token reservation after provider 429", settlementError);
+    }
+  };
 
   let body: { task_id?: unknown };
   try {
@@ -312,7 +333,24 @@ Deno.serve(async (req: Request) => {
       }
 
       const response = await fetchGeminiWithFallback(apiKey, model, requestBody, timeoutMs);
-      if (!response.ok) throw new Error(`Planner API failed (HTTP ${response.status})`);
+      if (!response.ok) {
+        if (response.status === 429) {
+          const diagnostic = inspectGeminiRateLimit(
+            await response.clone().json().catch(() => null),
+            response.headers.get("retry-after"),
+          );
+          const message = describeGeminiRateLimit(diagnostic) + " Task remains queued.";
+          await releaseProviderQuotaReservation(tokenBudgetRow.reservation_id as string);
+          await restoreTaskAfterQuotaBlock(message);
+          return json(req, {
+            task_id: task.id,
+            status: "queued",
+            error: message,
+            ...(diagnostic.retryAfterSeconds ? { retry_after_seconds: diagnostic.retryAfterSeconds } : {}),
+          }, 429);
+        }
+        throw new Error(`Planner API failed (HTTP ${response.status})`);
+      }
       const data = await response.json() as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
         usageMetadata?: { totalTokenCount?: number };
@@ -347,8 +385,25 @@ Deno.serve(async (req: Request) => {
       const apiKey = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
       if (!apiKey) throw new Error("URL analysis is not configured on the server");
       const targetUrl = validatePublicAnalysisUrl(task.payload?.url);
-      const publicUrlFetchProxyUrl = Deno.env.get("PUBLIC_URL_FETCH_PROXY_URL");
-      const publicUrlFetchProxyToken = Deno.env.get("PUBLIC_URL_FETCH_PROXY_TOKEN");
+      let publicUrlFetchProxyUrl = Deno.env.get("PUBLIC_URL_FETCH_PROXY_URL");
+      let publicUrlFetchProxyToken = Deno.env.get("PUBLIC_URL_FETCH_PROXY_TOKEN");
+      if ((!publicUrlFetchProxyUrl || !publicUrlFetchProxyToken) && serviceSupabase) {
+        try {
+          const proxyConfig = await serviceSupabase.rpc("get_public_url_fetch_proxy_config");
+          const rowCandidate = Array.isArray(proxyConfig.data) ? proxyConfig.data[0] : proxyConfig.data;
+          const row = typeof rowCandidate === "object" && rowCandidate !== null
+            ? rowCandidate as Record<string, unknown>
+            : null;
+          if (!proxyConfig.error && row) {
+            if (!publicUrlFetchProxyUrl && typeof row.proxy_url === "string") publicUrlFetchProxyUrl = row.proxy_url;
+            if (!publicUrlFetchProxyToken && typeof row.proxy_token === "string") publicUrlFetchProxyToken = row.proxy_token;
+          } else if (proxyConfig.error) {
+            console.error("URL proxy Vault configuration lookup failed", proxyConfig.error.message);
+          }
+        } catch (proxyConfigError) {
+          console.error("URL proxy Vault configuration lookup failed", proxyConfigError);
+        }
+      }
       if (!publicUrlFetchProxyUrl || !publicUrlFetchProxyToken) {
         throw new Error("Public URL analysis is disabled until a trusted DNS-pinning egress proxy is configured on the server");
       }
@@ -481,7 +536,24 @@ Deno.serve(async (req: Request) => {
       }
 
       const response = await fetchGeminiWithFallback(apiKey, model, requestBody, timeoutMs);
-      if (!response.ok) throw new Error(`URL analysis provider failed (HTTP ${response.status})`);
+      if (!response.ok) {
+        if (response.status === 429) {
+          const diagnostic = inspectGeminiRateLimit(
+            await response.clone().json().catch(() => null),
+            response.headers.get("retry-after"),
+          );
+          const message = describeGeminiRateLimit(diagnostic) + " URL analysis remains queued.";
+          await releaseProviderQuotaReservation(tokenBudgetRow.reservation_id as string);
+          await restoreTaskAfterQuotaBlock(message);
+          return json(req, {
+            task_id: task.id,
+            status: "queued",
+            error: message,
+            ...(diagnostic.retryAfterSeconds ? { retry_after_seconds: diagnostic.retryAfterSeconds } : {}),
+          }, 429);
+        }
+        throw new Error(`URL analysis provider failed (HTTP ${response.status})`);
+      }
       const data = await response.json() as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
         usageMetadata?: { totalTokenCount?: number };
