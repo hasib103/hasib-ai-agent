@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { inspectGeminiRateLimit as inspectTaskRunnerGeminiRateLimit } from "../../supabase/functions/task-runner/gemini-rate-limit";
 import {
   describeGeminiRateLimit,
   inspectGeminiRateLimit,
@@ -46,6 +47,13 @@ describe("Gemini quota diagnostics", () => {
     expect(shouldUseGoogleSearch("Explain how photosynthesis works")).toBe(false);
     expect(shouldUseGoogleSearch("Find the latest Gemini API rate limits")).toBe(true);
     expect(shouldUseGoogleSearch("বাংলাদেশের আজকের খবর খুঁজে দাও")).toBe(true);
+  });
+
+  it("keeps Task Runner's Deno quota classifier aligned", () => {
+    const info = inspectTaskRunnerGeminiRateLimit({
+      error: { details: [{ violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" }] }] },
+    });
+    expect(info.category).toBe("daily_quota");
   });
 
   it("does not invent a retry delay when the provider gives none", () => {
