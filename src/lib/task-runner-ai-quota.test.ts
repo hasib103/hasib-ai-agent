@@ -29,7 +29,7 @@ describe("Task Runner AI quota enforcement", () => {
 
   it("loads the URL proxy secret through the service-role Vault RPC", () => {
     expect(source).toContain('serviceSupabase.rpc("get_public_url_fetch_proxy_config")');
-    expect(source).toContain("public_url_fetch_proxy_token");
+    expect(source).toContain("row.proxy_token");
   });
 
   it("releases unused reservations and requeues provider 429 responses without consuming an attempt", () => {
