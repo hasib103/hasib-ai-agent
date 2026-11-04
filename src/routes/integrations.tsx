@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, CircleAlert, ExternalLink, Link2, RefreshCw } from "lucide-react";
+import { CheckCircle2, CircleAlert, Link2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/lib/store";
 import { supabase } from "@/lib/supabase";
 
