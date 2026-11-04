@@ -76,11 +76,18 @@ export function inspectGeminiRateLimit(
   let category: GeminiQuotaCategory = "unknown";
   if (/grounding|google[_-]?search|search.*(?:request|quota)/i.test(source)) {
     category = "search_grounding";
-  } else if (/spend|billing|prepay|tier|spend.?cap/i.test(source)) {
-    category = "spend_cap";
   } else if (/per[_-]?day|daily|requestsperday|tokensperday|\brpd\b|\btpd\b/i.test(source)) {
     category = "daily_quota";
   } else if (/per[_-]?minute|requestsperminute|tokensperminute|\brpm\b|\btpm\b/i.test(source)) {
+    category = "per_minute_quota";
+  } else if (/spend.?cap|billing|prepay|payment|credit balance/i.test(source)) {
+    category = "spend_cap";
+  } else if (/capacity|overload|temporarily unavailable/i.test(source)) {
+    category = "provider_capacity";
+  }
+  return { category, quotaIds, quotaMetrics, model, retryAfterSeconds };
+}
+
     category = "per_minute_quota";
   } else if (/capacity|overload|temporarily unavailable/i.test(source)) {
     category = "provider_capacity";
