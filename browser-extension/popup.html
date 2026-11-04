@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hasib AI Agent</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { width: 320px; margin: 0; padding: 16px; }
+      h1 { font-size: 18px; margin: 0 0 8px; }
+      p { font-size: 13px; line-height: 1.45; opacity: .82; }
+      textarea { box-sizing: border-box; width: 100%; min-height: 120px; resize: vertical; padding: 10px; border-radius: 8px; font: inherit; }
+      button { width: 100%; margin-top: 10px; padding: 10px; border: 0; border-radius: 8px; cursor: pointer; font: inherit; font-weight: 600; }
+      #send { background: #2563eb; color: white; }
+      #status { min-height: 18px; margin-bottom: 0; }
+      .muted { font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <h1>Hasib AI Agent</h1>
+    <p>Select text on a page before opening this popup, or type a question below.</p>
+    <textarea id="prompt" maxlength="8000" placeholder="Ask Hasib AI about selected text…"></textarea>
+    <button id="send" type="button">Copy prompt & open Hasib AI</button>
+    <p id="status" role="status" aria-live="polite"></p>
+    <p class="muted">Your selection is read only after you open the extension. The extension does not run in the background or collect browsing history.</p>
+    <script src="popup.js"></script>
+  </body>
+</html>
