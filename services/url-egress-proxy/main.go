@@ -22,7 +22,9 @@ const (
 	maxURLLength       = 2048
 	maxRequestBodySize = 4096
 	maxPageBytes       = 256 * 1024
+	maxMediaBytes      = 50 * 1024 * 1024
 	requestTimeout     = 8 * time.Second
+	mediaRequestTimeout = 35 * time.Second
 )
 
 type fetchRequest struct {
@@ -47,6 +49,7 @@ type ipResolver interface {
 type dialContextFunc func(ctx context.Context, network, address string) (net.Conn, error)
 
 var fetchSlots = make(chan struct{}, 8)
+var mediaFetchSlots = make(chan struct{}, 2)
 
 var globalIPv6 = netip.MustParsePrefix("2000::/3")
 
@@ -163,6 +166,14 @@ func pinnedDialContext(hostname string, resolver ipResolver, dial dialContextFun
 }
 
 func validateTargetURL(raw string) (*url.URL, error) {
+	return validateTargetURLWithOptions(raw, false)
+}
+
+func validateMediaTargetURL(raw string) (*url.URL, error) {
+	return validateTargetURLWithOptions(raw, true)
+}
+
+func validateTargetURLWithOptions(raw string, allowSensitiveQuery bool) (*url.URL, error) {
 	if strings.TrimSpace(raw) == "" || len(raw) > maxURLLength {
 		return nil, fmt.Errorf("URL must be between 1 and %d characters", maxURLLength)
 	}
@@ -210,10 +221,12 @@ func validateTargetURL(raw string) (*url.URL, error) {
 		"client_secret": {}, "x_amz_signature": {}, "x_amz_credential": {},
 		"x_goog_signature": {}, "x_goog_credential": {},
 	}
-	for key := range parsed.Query() {
-		normalized := strings.ReplaceAll(strings.ToLower(key), "-", "_")
-		if _, exists := sensitiveKeys[normalized]; exists {
-			return nil, fmt.Errorf("sensitive query parameters are not allowed")
+	if !allowSensitiveQuery {
+		for key := range parsed.Query() {
+			normalized := strings.ReplaceAll(strings.ToLower(key), "-", "_")
+			if _, exists := sensitiveKeys[normalized]; exists {
+				return nil, fmt.Errorf("sensitive query parameters are not allowed")
+			}
 		}
 	}
 	parsed.Fragment = ""
@@ -232,7 +245,25 @@ func supportedContentType(value string) bool {
 	}
 }
 
+func supportedMediaContentType(value string) bool {
+	contentType := strings.ToLower(strings.TrimSpace(strings.Split(value, ";")[0]))
+	switch contentType {
+	case "video/mp4", "video/webm", "video/quicktime", "video/3gpp", "video/mpeg", "video/x-matroska", "video/x-msvideo":
+		return true
+	default:
+		return false
+	}
+}
+
 func fetchPublicTarget(ctx context.Context, target *url.URL, resolver ipResolver, dial dialContextFunc, byteLimit int64) (fetchResult, error) {
+	return fetchPublicTargetMode(ctx, target, resolver, dial, byteLimit, false)
+}
+
+func fetchPublicMediaTarget(ctx context.Context, target *url.URL, resolver ipResolver, dial dialContextFunc, byteLimit int64) (fetchResult, error) {
+	return fetchPublicTargetMode(ctx, target, resolver, dial, byteLimit, true)
+}
+
+func fetchPublicTargetMode(ctx context.Context, target *url.URL, resolver ipResolver, dial dialContextFunc, byteLimit int64, media bool) (fetchResult, error) {
 	dialer := pinnedDialContext(target.Hostname(), resolver, dial)
 	transport := &http.Transport{
 		Proxy:                 nil,
@@ -243,9 +274,15 @@ func fetchPublicTarget(ctx context.Context, target *url.URL, resolver ipResolver
 	}
 	defer transport.CloseIdleConnections()
 
+	clientTimeout := requestTimeout
+	acceptHeader := "text/html, text/plain, application/json, application/xhtml+xml, text/xml, application/xml, text/csv"
+	if media {
+		clientTimeout = mediaRequestTimeout
+		acceptHeader = "video/mp4, video/webm, video/quicktime, video/3gpp, video/mpeg, video/x-matroska, video/x-msvideo"
+	}
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   requestTimeout,
+		Timeout:   clientTimeout,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -254,7 +291,7 @@ func fetchPublicTarget(ctx context.Context, target *url.URL, resolver ipResolver
 	if err != nil {
 		return fetchResult{}, fmt.Errorf("could not create upstream request")
 	}
-	request.Header.Set("Accept", "text/html, text/plain, application/json, application/xhtml+xml, text/xml, application/xml, text/csv")
+	request.Header.Set("Accept", acceptHeader)
 	request.Header.Set("User-Agent", "HasibAI-ReadOnly-URL-Analyzer/1.0")
 
 	response, err := client.Do(request)
@@ -268,17 +305,29 @@ func fetchPublicTarget(ctx context.Context, target *url.URL, resolver ipResolver
 		contentType:   response.Header.Get("Content-Type"),
 		contentLength: response.ContentLength,
 	}
-	if response.StatusCode >= 300 && response.StatusCode < 400 {
-		return result, nil
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return result, nil
-	}
-	if !supportedContentType(result.contentType) {
-		return result, nil
-	}
-	if result.contentLength > byteLimit {
-		return result, nil
+	if media {
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return result, fmt.Errorf("upstream media response is not successful")
+		}
+		if !supportedMediaContentType(result.contentType) {
+			return result, fmt.Errorf("upstream response is not an allowed video type")
+		}
+		if result.contentLength > byteLimit {
+			return result, fmt.Errorf("upstream video exceeds byte limit")
+		}
+	} else {
+		if response.StatusCode >= 300 && response.StatusCode < 400 {
+			return result, nil
+		}
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return result, nil
+		}
+		if !supportedContentType(result.contentType) {
+			return result, nil
+		}
+		if result.contentLength > byteLimit {
+			return result, nil
+		}
 	}
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, byteLimit+1))
@@ -287,6 +336,9 @@ func fetchPublicTarget(ctx context.Context, target *url.URL, resolver ipResolver
 	}
 	if int64(len(body)) > byteLimit {
 		result.contentLength = int64(len(body))
+		if media {
+			return result, fmt.Errorf("upstream video exceeds byte limit")
+		}
 		return result, nil
 	}
 	result.body = body
@@ -304,6 +356,14 @@ func writeJSONError(writer http.ResponseWriter, status int, message string) {
 }
 
 func newFetchHandler(token string, resolver ipResolver, dial dialContextFunc) http.Handler {
+	return newFetchHandlerMode(token, resolver, dial, false)
+}
+
+func newMediaFetchHandler(token string, resolver ipResolver, dial dialContextFunc) http.Handler {
+	return newFetchHandlerMode(token, resolver, dial, true)
+}
+
+func newFetchHandlerMode(token string, resolver ipResolver, dial dialContextFunc, media bool) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Cache-Control", "no-store")
 		if request.Method != http.MethodPost {
@@ -323,7 +383,6 @@ func newFetchHandler(token string, resolver ipResolver, dial dialContextFunc) ht
 			writeJSONError(writer, http.StatusRequestEntityTooLarge, "Request body too large")
 			return
 		}
-
 		request.Body = http.MaxBytesReader(writer, request.Body, maxRequestBodySize)
 		decoder := json.NewDecoder(request.Body)
 		decoder.DisallowUnknownFields()
@@ -342,34 +401,55 @@ func newFetchHandler(token string, resolver ipResolver, dial dialContextFunc) ht
 			writeJSONError(writer, http.StatusBadRequest, "Invalid request")
 			return
 		}
-		if input.MaxBytes < 1 || input.MaxBytes > maxPageBytes ||
+		limit := maxPageBytes
+		if media {
+			limit = maxMediaBytes
+		}
+		if input.MaxBytes < 1 || input.MaxBytes > limit ||
 			input.FollowRedirects || !input.RejectNonPublicAddresses || !input.PinResolvedAddress {
 			writeJSONError(writer, http.StatusBadRequest, "Unsafe fetch options rejected")
 			return
 		}
-
-		target, err := validateTargetURL(input.URL)
+		var target *url.URL
+		var err error
+		if media {
+			target, err = validateMediaTargetURL(input.URL)
+		} else {
+			target, err = validateTargetURL(input.URL)
+		}
 		if err != nil {
 			writeJSONError(writer, http.StatusBadRequest, err.Error())
 			return
 		}
-
+		var slots chan struct{}
+		if media {
+			slots = mediaFetchSlots
+		} else {
+			slots = fetchSlots
+		}
 		select {
-		case fetchSlots <- struct{}{}:
-			defer func() { <-fetchSlots }()
+		case slots <- struct{}{}:
+			defer func() { <-slots }()
 		default:
 			writeJSONError(writer, http.StatusServiceUnavailable, "URL fetch capacity is temporarily full")
 			return
 		}
-
-		ctx, cancel := context.WithTimeout(request.Context(), requestTimeout)
+		ctxTimeout := requestTimeout
+		if media {
+			ctxTimeout = mediaRequestTimeout
+		}
+		ctx, cancel := context.WithTimeout(request.Context(), ctxTimeout)
 		defer cancel()
-		result, err := fetchPublicTarget(ctx, target, resolver, dial, int64(input.MaxBytes))
+		var result fetchResult
+		if media {
+			result, err = fetchPublicMediaTarget(ctx, target, resolver, dial, int64(input.MaxBytes))
+		} else {
+			result, err = fetchPublicTarget(ctx, target, resolver, dial, int64(input.MaxBytes))
+		}
 		if err != nil {
-			writeJSONError(writer, http.StatusBadGateway, "Public page fetch failed")
+			writeJSONError(writer, http.StatusBadGateway, "Public fetch failed")
 			return
 		}
-
 		writer.Header().Set("Content-Type", "application/octet-stream")
 		writer.Header().Set("X-Upstream-Status", strconv.Itoa(result.status))
 		writer.Header().Set("X-Upstream-Content-Type", result.contentType)
@@ -402,13 +482,14 @@ func main() {
 		_ = json.NewEncoder(writer).Encode(map[string]string{"status": "ok"})
 	})
 	mux.Handle("/fetch", newFetchHandler(token, net.DefaultResolver, dialer.DialContext))
+	mux.Handle("/fetch-media", newMediaFetchHandler(token, net.DefaultResolver, dialer.DialContext))
 
 	server := &http.Server{
 		Addr:              ":" + port,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       8 * time.Second,
-		WriteTimeout:      12 * time.Second,
+		WriteTimeout:      45 * time.Second,
 		IdleTimeout:       30 * time.Second,
 	}
 	log.Printf("URL egress proxy listening on port %s", port)
