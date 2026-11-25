@@ -380,7 +380,7 @@ async function publishJob(userId: string, jobId: string) {
     } else {
       throw new Error("Publishing is not enabled for " + conn.provider + ". The provider requires a separate account or content workflow.");
     }
-    await admin.from("social_publish_jobs").update({ status: "published", published_at: new Date().toISOString(), provider_post_id: postId, provider_post_url: postUrl || null, updated_at: new Date().toISOString(), last_error: null }).eq("id", jobId).eq("user_id", userId);
+    await admin.from("social_publish_jobs").update({ status: "published", published_at: new Date().toISOString(), provider_post_id: postId, provider_post_url: postUrl || null, updated_at: new Date().toISOString(), last_error: null }).eq("id", jobId).eq("user_id", userId).eq("status", "publishing");
     return { id: jobId, status: "published", provider: conn.provider, provider_post_id: postId, provider_post_url: postUrl || null };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Publishing failed.";
