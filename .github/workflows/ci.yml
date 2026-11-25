@@ -48,8 +48,14 @@ jobs:
       - name: Type-check Task Runner Edge Function
         run: deno check supabase/functions/task-runner/index.ts
 
+      - name: Type-check Social Automation Edge Function
+        run: deno check supabase/functions/social-automation/index.ts
+
       - name: Test Task Runner public URL validation
         run: deno test supabase/functions/task-runner/public-url.test.ts
+
+      - name: Test Social Automation media proxy helpers
+        run: deno test supabase/functions/social-automation/media-proxy.test.ts
 
       - name: Verify Task Runner CORS allowlist
         shell: bash
