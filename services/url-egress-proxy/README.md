@@ -1,13 +1,14 @@
 # Hasib AI Agent — URL Egress Proxy
 
-This small server-side service fetches only public text pages for the Task Runner. It is deliberately separate from the Supabase Edge Function because the Edge Function's standard fetch API cannot pin a checked DNS answer to the socket connection.
+This small server-side service fetches public text pages for the Task Runner and bounded video media for Social Automation. It is deliberately separate from Supabase Edge Functions because the Edge Function's standard fetch API cannot pin a checked DNS answer to the socket connection.
 
 ## Security behavior
 
 - `POST /fetch` requires `Authorization: Bearer <PUBLIC_URL_FETCH_PROXY_TOKEN>`; the token must be a high-entropy secret of at least 32 characters.
 - Only HTTP/HTTPS URLs on standard ports are accepted. Embedded credentials, IP literals, local/reserved hostnames, sensitive query keys and redirects are rejected.
 - Every outbound connection resolves the target hostname inside the custom `DialContext`, rejects the entire answer set if any A/AAAA result is not globally public, and dials a validated IP literal directly. TLS certificate verification and SNI continue to use the original hostname.
-- The proxy does not follow redirects, forwards no caller cookies or authorization headers to the target, allows only text/HTML content types, caps upstream response bytes at 256 KiB, limits concurrent fetches, and applies short timeouts.
+- The `/fetch` route does not follow redirects, forwards no caller cookies or authorization headers to the target, allows only text/HTML content types, caps upstream response bytes at 256 KiB, limits concurrent fetches, and applies short timeouts.
+- The `/fetch-media` route is separately bounded to 50 MiB, accepts only common video MIME types, allows signed query strings needed for media URLs, uses the same DNS/IP pinning and redirect refusal, and limits concurrent media fetches to two. It does not forward caller cookies or authorization headers to the target.
 - `GET /healthz` is a liveness endpoint and does not expose configuration or secrets.
 
 ## Render deployment
