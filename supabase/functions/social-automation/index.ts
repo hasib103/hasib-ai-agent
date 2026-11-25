@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { fetchVideoViaProxy } from "./media-proxy.ts";
 
 type Provider = "facebook" | "instagram" | "youtube" | "tiktok" | "linkedin" | "x" | "pinterest" | "threads" | "whatsapp";
 const PROVIDERS: Provider[] = ["facebook", "instagram", "youtube", "tiktok", "linkedin", "x", "pinterest", "threads", "whatsapp"];
@@ -218,26 +219,6 @@ async function authenticate(req: Request) {
   if (error || !data.user) throw new Error("Your session expired. Sign in again.");
   return data.user;
 }
-async function readLimitedBody(response: Response, limitBytes: number): Promise<Uint8Array> {
-  if (!response.body) throw new Error("Media source returned an empty body.");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > limitBytes) {
-      await reader.cancel().catch(() => undefined);
-      throw new Error("Media is over the 50 MB upload safety limit for this workflow.");
-    }
-    chunks.push(value);
-  }
-  const combined = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) { combined.set(chunk, offset); offset += chunk.byteLength; }
-  return combined;
-}
 function safePublicHttpsUrl(value: string): boolean {
   try {
     const u = new URL(value);
@@ -247,6 +228,15 @@ function safePublicHttpsUrl(value: string): boolean {
     if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(":")) return false;
     return true;
   } catch { return false; }
+}
+async function getPublicMediaProxyConfig(): Promise<{ proxyUrl: string; proxyToken: string }> {
+  const { data, error } = await admin.rpc("get_public_url_fetch_proxy_config");
+  const candidate = Array.isArray(data) ? data[0] : data;
+  const row = typeof candidate === "object" && candidate !== null ? candidate as Record<string, unknown> : null;
+  if (error || !row || typeof row.proxy_url !== "string" || typeof row.proxy_token !== "string" || !row.proxy_url || !row.proxy_token) {
+    throw new Error("YouTube media publishing is disabled until the trusted DNS-pinning media proxy is configured.");
+  }
+  return { proxyUrl: row.proxy_url, proxyToken: row.proxy_token };
 }
 async function getValidAccessToken(conn: any): Promise<string> {
   const expiresAt = conn.token_expires_at ? new Date(conn.token_expires_at).getTime() : 0;
@@ -308,11 +298,17 @@ async function publishJob(userId: string, jobId: string) {
   if (job.scheduled_at && new Date(job.scheduled_at).getTime() > Date.now()) throw new Error("This post is scheduled for a future time.");
   const { data: conn, error: connError } = await admin.from("social_connections").select("*").eq("id", job.connection_id).eq("user_id", userId).eq("status", "connected").single();
   if (connError || !conn) throw new Error("Connected account not found. Reconnect it and try again.");
-  await admin.from("social_publish_jobs").update({ status: "publishing", attempts: job.attempts + 1, updated_at: new Date().toISOString(), last_error: null }).eq("id", jobId).eq("user_id", userId);
-  const token = await getValidAccessToken(conn);
-  const content = job.content || {};
+  const claimAt = new Date().toISOString();
+  const { data: claimedJob, error: claimError } = await admin.from("social_publish_jobs")
+    .update({ status: "publishing", attempts: Number(job.attempts || 0) + 1, updated_at: claimAt, last_error: null })
+    .eq("id", jobId).eq("user_id", userId).eq("status", job.status)
+    .or("scheduled_at.is.null,scheduled_at.lte." + claimAt)
+    .select("*").maybeSingle();
+  if (claimError || !claimedJob) throw new Error("This post is already being published or is no longer eligible.");
+  const content = claimedJob.content || {};
   let postId = ""; let postUrl = "";
   try {
+    const token = await getValidAccessToken(conn);
     if (conn.provider === "facebook") {
       if (!content.text) throw new Error("Facebook post text is required.");
       const d = await fetch("https://graph.facebook.com/v22.0/" + encodeURIComponent(conn.external_account_id) + "/feed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: content.text, access_token: token }) }).then((r) => r.json());
@@ -349,14 +345,11 @@ async function publishJob(userId: string, jobId: string) {
       postId = String(p.id);
     } else if (conn.provider === "youtube") {
       if (job.content_type !== "video" || !content.media_url || !safePublicHttpsUrl(String(content.media_url))) throw new Error("YouTube publishing requires a public HTTPS video URL and video content type.");
-      const source = await fetch(String(content.media_url), { redirect: "error", signal: AbortSignal.timeout(20000) });
-      if (!source.ok) throw new Error("YouTube could not fetch the video source URL.");
-      const length = Number(source.headers.get("content-length") || 0);
-      if (length > 50 * 1024 * 1024) throw new Error("Video is over the 50 MB upload safety limit for this workflow.");
-      const media = await readLimitedBody(source, 50 * 1024 * 1024);
+      const proxyConfig = await getPublicMediaProxyConfig();
+      const { media, contentType } = await fetchVideoViaProxy(String(content.media_url), proxyConfig.proxyUrl, proxyConfig.proxyToken);
       const boundary = "hasib_social_" + crypto.randomUUID().replaceAll("-", "");
       const metadata = { snippet: { title: String(content.title || content.text || "Hasib AI Agent video").slice(0, 100), description: String(content.text || "").slice(0, 5000) }, status: { privacyStatus: content.privacy_status === "public" ? "public" : "private" } };
-      const body = new Blob(["--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n", JSON.stringify(metadata), "\r\n--" + boundary + "\r\nContent-Type: video/*\r\n\r\n", media, "\r\n--" + boundary + "--"]);
+      const body = new Blob(["--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n", JSON.stringify(metadata), "\r\n--" + boundary + "\r\nContent-Type: " + contentType + "\r\n\r\n", media, "\r\n--" + boundary + "--"]);
       const response = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "multipart/related; boundary=" + boundary }, body, signal: AbortSignal.timeout(90000) });
       const d = await response.json().catch(() => ({}));
       if (!response.ok || !d.id) throw new Error("YouTube upload failed (HTTP " + response.status + "). Check channel permissions and API quota.");
@@ -392,7 +385,7 @@ async function publishJob(userId: string, jobId: string) {
     return { id: jobId, status: "published", provider: conn.provider, provider_post_id: postId, provider_post_url: postUrl || null };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Publishing failed.";
-    await admin.from("social_publish_jobs").update({ status: "failed", last_error: message.slice(0, 500), updated_at: new Date().toISOString() }).eq("id", jobId).eq("user_id", userId);
+    await admin.from("social_publish_jobs").update({ status: "failed", last_error: message.slice(0, 500), updated_at: new Date().toISOString() }).eq("id", jobId).eq("user_id", userId).eq("status", "publishing");
     throw error;
   }
 }
@@ -501,8 +494,8 @@ Deno.serve(async (req) => {
       if (error || !job || !["draft","pending_approval"].includes(job.status)) return json(req, { error: "Only your draft posts can be approved." }, 409);
       const future = job.scheduled_at && new Date(job.scheduled_at).getTime() > Date.now();
       const nextStatus = future ? "scheduled" : "approved";
-      const { error: updateError } = await admin.from("social_publish_jobs").update({ status: nextStatus, approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id).eq("user_id", user.id);
-      if (updateError) throw new Error("Could not approve the post.");
+      const { data: approvedJob, error: updateError } = await admin.from("social_publish_jobs").update({ status: nextStatus, approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id).eq("user_id", user.id).eq("status", job.status).select("id,status").maybeSingle();
+      if (updateError || !approvedJob) return json(req, { error: "This post changed before approval could be completed." }, 409);
       return json(req, { id, status: nextStatus, approved_at: new Date().toISOString() });
     }
     if (action === "publish_job") {
