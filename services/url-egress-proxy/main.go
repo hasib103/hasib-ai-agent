@@ -19,11 +19,11 @@ import (
 )
 
 const (
-	maxURLLength       = 2048
-	maxRequestBodySize = 4096
-	maxPageBytes       = 256 * 1024
-	maxMediaBytes      = 50 * 1024 * 1024
-	requestTimeout     = 8 * time.Second
+	maxURLLength        = 2048
+	maxRequestBodySize  = 4096
+	maxPageBytes        = 256 * 1024
+	maxMediaBytes       = 50 * 1024 * 1024
+	requestTimeout      = 8 * time.Second
 	mediaRequestTimeout = 35 * time.Second
 )
 
