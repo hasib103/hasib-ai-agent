@@ -29,7 +29,7 @@ export async function fetchVideoViaProxy(
   proxyUrl: string,
   proxyToken: string,
   fetcher: typeof fetch = fetch,
-): Promise<{ media: Uint8Array; contentType: string }> {
+): Promise<{ media: Uint8Array<ArrayBuffer>; contentType: string }> {
   const endpoint = buildMediaProxyUrl(proxyUrl);
   const response = await fetcher(endpoint, {
     method: "POST",
