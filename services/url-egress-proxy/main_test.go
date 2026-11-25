@@ -258,3 +258,85 @@ func TestFetchHandlerRequiresAuthAndSafeOptions(t *testing.T) {
 		t.Fatalf("expected unsafe fetch options to be rejected, got %d", unsafe.Code)
 	}
 }
+
+func TestValidateMediaTargetURLAllowsSignedQueryOnlyForMedia(t *testing.T) {
+	if _, err := validateMediaTargetURL("https://example.com/video.mp4?sig=opaque"); err != nil {
+		t.Fatalf("media URL should allow signed query parameters: %v", err)
+	}
+	if _, err := validateTargetURL("https://example.com/video.mp4?sig=opaque"); err == nil {
+		t.Fatal("page analysis must continue rejecting sensitive query parameters")
+	}
+}
+
+func TestSupportedMediaContentType(t *testing.T) {
+	if !supportedMediaContentType("video/mp4; codecs=avc1") {
+		t.Fatal("video/mp4 should be supported")
+	}
+	if supportedMediaContentType("text/html") || supportedMediaContentType("application/octet-stream") {
+		t.Fatal("non-video types must be rejected")
+	}
+}
+
+func TestMediaFetchHandlerAllowsSignedUrlAndPinsValidatedAddress(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "video/mp4")
+		_, _ = io.WriteString(writer, "video")
+	}))
+	defer upstream.Close()
+	resolver := &fakeResolver{responses: [][]netip.Addr{{mustAddr("93.184.216.34")}}}
+	dial := func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, upstream.Listener.Addr().String())
+	}
+	token := "a-high-entropy-test-token-value-123456"
+	handler := newMediaFetchHandler(token, resolver, dial)
+	body, _ := json.Marshal(fetchRequest{
+		URL:                      "http://example.com/video.mp4?sig=opaque",
+		MaxBytes:                 64,
+		FollowRedirects:          false,
+		RejectNonPublicAddresses: true,
+		PinResolvedAddress:       true,
+	})
+	request := httptest.NewRequest(http.MethodPost, "/fetch-media", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected successful media fetch, got %d: %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("X-Upstream-Content-Type") != "video/mp4" {
+		t.Fatalf("expected video/mp4, got %q", response.Header().Get("X-Upstream-Content-Type"))
+	}
+	if response.Body.String() != "video" {
+		t.Fatalf("unexpected body: %q", response.Body.String())
+	}
+}
+
+func TestMediaFetchHandlerRejectsOversizedResponse(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "video/mp4")
+		_, _ = io.WriteString(writer, "01234567890")
+	}))
+	defer upstream.Close()
+	resolver := &fakeResolver{responses: [][]netip.Addr{{mustAddr("93.184.216.34")}}}
+	dial := func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, upstream.Listener.Addr().String())
+	}
+	token := "a-high-entropy-test-token-value-123456"
+	handler := newMediaFetchHandler(token, resolver, dial)
+	body, _ := json.Marshal(fetchRequest{
+		URL:                      "http://example.com/video.mp4",
+		MaxBytes:                 10,
+		FollowRedirects:          false,
+		RejectNonPublicAddresses: true,
+		PinResolvedAddress:       true,
+	})
+	request := httptest.NewRequest(http.MethodPost, "/fetch-media", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("expected oversized media to be rejected, got %d", response.Code)
+	}
+}
